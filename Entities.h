@@ -21,6 +21,7 @@ class Entity
         }
         virtual void render(){};
 
+        // rotates a point around origin
         olc::vf2d rotatePt(olc::vf2d point,olc::vf2d angle){
             olc::vf2d updatedpoint;
 
@@ -48,7 +49,7 @@ class Hero : public Entity
             view->DrawCircle(location,entSize,colour);
         }
 
-        // Testing code, may use later for Charecter Sprite
+
         void render(olc::vf2d faceing){
             float looking = 0;
             if (faceing.x < 0.0)
@@ -56,13 +57,25 @@ class Hero : public Entity
             if (faceing.x > 0.0)
                 looking -= 0.05;
 
-            view->DrawCircle((0.0 + looking) *entSize,-1 *entSize, 0.25 *entSize); // Head
+            view->FillCircle((0.0 + looking) *entSize,-1 *entSize, 0.25 *entSize,olc::BLACK);// Head
+            view->DrawCircle((0.0 + looking) *entSize,-1 *entSize, 0.25 *entSize);
 
-            view->DrawRect( -0.3 *entSize,-0.7 *entSize,-0.15*entSize, 0.6 *entSize,colour); // Left Arm
-            view->DrawRect(  0.3 *entSize,-0.7 *entSize, 0.15*entSize, 0.6 *entSize,colour); // Right Arm
-            view->DrawRect( -0.3 *entSize,-0.75 *entSize, 0.6 *entSize, 0.75 *entSize,colour); // Torso
-            view->DrawRect(  0.0 *entSize, 0.0 *entSize,-0.25 *entSize, 0.8 *entSize,colour); // Left Leg
-            view->DrawRect(  0.0 *entSize, 0.0 *entSize, 0.25 *entSize, 0.8 *entSize,colour); // Right Leg
+
+            view->FillRect( -0.45 * entSize,-0.7 * entSize, 0.15 * entSize, 0.6 * entSize,olc::BLACK);// Left Arm
+            view->DrawRect( -0.45 * entSize,-0.7 * entSize, 0.15 * entSize, 0.6 * entSize,colour);
+
+            view->FillRect(  0.3 * entSize, -0.7 * entSize, 0.15*entSize, 0.6 *entSize,olc::BLACK);// Right Arm
+            view->DrawRect(  0.3 * entSize, -0.7 * entSize, 0.15*entSize, 0.6 *entSize,colour);
+
+            view->FillRect( -0.3 *entSize,-0.75 * entSize, 0.6 *entSize, 0.75 *entSize,olc::BLACK); //torso
+            view->DrawRect( -0.3 *entSize,-0.75 * entSize, 0.6 *entSize, 0.75 *entSize,colour);
+
+            view->FillRect(  -0.25 *entSize, 0.0 * entSize, 0.25 *entSize, 0.8 *entSize,olc::BLACK);// Left Leg
+            view->DrawRect(  -0.25 *entSize, 0.0 * entSize, 0.25 *entSize, 0.8 *entSize,colour);
+
+            view->FillRect(  0.0 * entSize, 0.0 * entSize, 0.25 * entSize, 0.8 * entSize,olc::BLACK);// Right Leg
+            view->DrawRect(  0.0 * entSize, 0.0 * entSize, 0.25 * entSize, 0.8 * entSize,colour);
+
 
             //collider Debug
             view->DrawCircle(location,entSize,olc::VERY_DARK_BLUE);
@@ -96,6 +109,7 @@ class Foe : public Entity
             tip = rotatePt(tip,faceing);
             left = rotatePt(left,faceing);
             right = rotatePt(right,faceing);
+
 
             view->DrawTriangle(tip+location,left+location,right+location, colour);
         }
