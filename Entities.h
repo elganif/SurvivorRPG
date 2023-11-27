@@ -1,7 +1,7 @@
 #ifndef ENTITIES_H_INCLUDED
 #define ENTITIES_H_INCLUDED
 
-#include "quadTree.h"
+//#include "quadTree.h" currently included in this file. todo: fix that
 
 using std::list;
 using std::shared_ptr;
