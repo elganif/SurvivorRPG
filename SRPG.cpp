@@ -3,23 +3,27 @@
 #define OLC_PGEX_TRANSFORMEDVIEW
 #include "olcPGEX_TransformedView.h"
 
+
 #include "Entities.h"
 
 using std::vector;
 using std::list;
+using std::shared_ptr;
 
 class SurvivorRPG : public olc::PixelGameEngine
 {
 float screenRatio;
 float worldRadius = 10.0;
 
-Hero* mainChar;
-Foe* mainVillain;
+shared_ptr<Hero> mainChar;
+shared_ptr<Foe> mainVillain;
 
-vector<Grass*> lawn;
-list<Projectile*> bullets;
+vector<Decoration*> lawn;
+list<shared_ptr<Projectile>> bullets;
 
-olc::TileTransformedView viewer;
+QuadTree* collidables;
+
+olc::TransformedView viewer;
 
 public:
 	SurvivorRPG()
@@ -32,13 +36,17 @@ public:
 	{
 		// Called once at the start, so create things here
         screenRatio = (float)ScreenWidth()/(float)ScreenHeight();
-
-		viewer = olc::TileTransformedView({ScreenWidth(),ScreenHeight()},{ScreenHeight()/2,ScreenHeight()/2});
+        olc::vf2d screentl = {ScreenWidth(),ScreenHeight()};
+        olc::vf2d screenscale = {ScreenHeight()/2.0,ScreenHeight()/2.0};
+		viewer = olc::TileTransformedView(screentl,screenscale);
 		viewer.MoveWorldOffset({-1*screenRatio,-1});
 
         // Object inialization
-        mainChar = new Hero(&viewer,{0,0},0.07);
-        mainVillain = new Foe(&viewer,{0.5,0.5},0.05);
+        mainChar = shared_ptr<Hero> (new Hero(&viewer,{0,0},0.07));
+        mainVillain = shared_ptr<Foe> (new Foe(&viewer,{0.5,0.5},0.05));
+        collidables = new QuadTree({-worldRadius,-worldRadius},{worldRadius*2,worldRadius*2});
+        collidables->insertItem((shared_ptr<Entity>)mainChar);
+        collidables->insertItem((shared_ptr<Entity>)mainVillain);
 
         //place random grass for background
         srand(time(NULL));
@@ -66,7 +74,7 @@ public:
                 }
             }
             if(valid){
-                lawn.push_back( new Grass(&viewer, attempting, grass_size));
+                lawn.push_back( new Decoration(&viewer, attempting, grass_size));
             }
         }
 
@@ -134,64 +142,68 @@ public:
 		// Shooty buttons for testing - needs moving into control scheeme
 		if(GetMouse(olc::Mouse::LEFT).bPressed || GetMouse(olc::Mouse::RIGHT).bHeld)
 		{
+                std::shared_ptr<Projectile> temp(new Projectile(&viewer,{0,0},0.05f,0.025f,((float)rand() / (float)RAND_MAX) * 100.0f,((float)rand() / (float)RAND_MAX) * 0.5f,target,1));
 
-		        bullets.push_back(new Projectile(&viewer,{0,0},0.05,0.025,((float)rand() / (float)RAND_MAX) * 100.0,((float)rand() / (float)RAND_MAX) * 0.5,target));
-
-
-		}
-
-        for(auto const& entity : bullets){
-            entity->movement(movement);
-
-            if (entity->isAlive()){
-                entity->update(fElapsedTime);
-                entity->render();
-            }
+		        bullets.push_back(temp);
+		        collidables->insertItem((shared_ptr<Entity>)temp);
 
 		}
 
 
-        // Delete any bullets that are no longer needed
-        auto  it = bullets.begin();
-        auto itend = bullets.end();
-        while(it != bullets.end()){
-            if(!(*it)->isAlive()){
-                Projectile* temp = (*it);
-                bullets.erase(it++);
-                delete temp;
-            } else {
-                it++;
+
+
+        // Loop through and process all bullet objects
+        auto entity = bullets.begin();
+
+        while(entity != bullets.end()){
+
+            // call the tick update on each bullet
+            (*entity)->update(fElapsedTime,movement);
+
+            // check alive or dead, if alive draw, if dead erase
+            if ((*entity)->isAlive()){
+                //(*entity)->render();
+                entity++;
+            } else { // if(!(*entity)->isAlive()){
+
+                bullets.erase(entity++);
+                //delete temp;
             }
         }
+
+
+
+        // Brute force render entities - todo:Move each type into its own manager and draw layer
+        mainVillain->movement(movement);
+        list<shared_ptr<Entity>> renderables;
+        rectangle screen = rectangle({viewer.GetWorldTL(),viewer.GetWorldVisibleArea()});
+        collidables->getOverlapItems(screen,renderables);
+        for(auto it = renderables.begin();it!= renderables.end();it++){
+            (*it)->render();
+        }
+        collidables->validateLocations();
+
+        //collidables->drawTree(&viewer);
+        //viewer.HandlePanAndZoom();
+		renderUI(target); //To build
+        DrawString({50,80},std::to_string(collidables->curDepth()),olc::BLUE);
+        DrawString({50,100},std::to_string(renderables.size()),olc::BLUE);
+		return true;
+	}
+
+    void renderUI(olc::vf2d target){
+        //prepare areas for Side bar UI interface
+        int uiWidth = (ScreenWidth() - ScreenHeight())/2;
+
+        FillRect(0, 0, uiWidth, ScreenHeight(), olc::VERY_DARK_BLUE);
+        FillRect(ScreenWidth() - uiWidth, 0, ScreenHeight(), ScreenHeight(), olc::VERY_DARK_BLUE);
+
+        //Debug code for checking size of bullet list during runtime
+        DrawString({50,50},std::to_string(bullets.size()),olc::BLUE);
 
         //crosshair for targeting
         viewer.DrawLine( target.x+0.01,target.y,target.x-0.01,target.y,olc::DARK_MAGENTA);
         viewer.DrawLine( target.x,target.y+0.01,target.x,target.y-0.01,olc::DARK_MAGENTA);
-
-        // Brute force render entities - todo:Move each type into its own manager and draw layer
-        mainChar->render(movement);
-
-        mainVillain->movement(movement);
-
-        mainVillain->render();
-
-		renderUI(); //To build
-
-		return true;
-	}
-
-    void renderUI(){
-    //prepare areas for Side bar UI interface
-            int uiWidth = (ScreenWidth() - ScreenHeight())/2;
-
-            FillRect(0, 0, uiWidth, ScreenHeight(), olc::VERY_DARK_BLUE);
-            FillRect(ScreenWidth() - uiWidth, 0, ScreenHeight(), ScreenHeight(), olc::VERY_DARK_BLUE);
-
-            DrawString({50,50},std::to_string(bullets.size()),olc::BLUE);
-//            for(int i = 0;i < bullets.size();i++){
-//                DrawRect(3,i*3,2,2,olc::MAGENTA);
-//            }
-
 
     }
 };
