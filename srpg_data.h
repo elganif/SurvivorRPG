@@ -52,5 +52,17 @@ class Entity;
 namespace srpg_data{
         extern QuadTree* gameObjects ;
         extern olc::TransformedView* viewer;
+        extern int renderLayerFloor;
+        extern int renderLayerEntities;
+        extern int renderLayerUI;
+
+        struct controls{
+                olc::vf2d movement;
+                olc::vf2d target;
+                bool mainAttack;
+                bool rapidFire;
+
+
+        };
 };
 #endif // SRPG_DATA_H_INCLUDED

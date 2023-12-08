@@ -15,13 +15,15 @@ class Decoration;
 class DecalManager{
     private:
     std::vector<std::shared_ptr<Decoration>> lawn;
+    olc::Sprite* image;
     float worldRadius;
     public:
     DecalManager( float world);
     ~DecalManager();
 
-    void initalize();
+    void initalize(olc::PixelGameEngine* game);
     void update(float fElapsedTime,olc::vf2d movement);
+    void makeRender(olc::Sprite* tSprite,olc::vf2d area,olc::PixelGameEngine* game,olc::Pixel lineColourL);
     int size();
 };
 
@@ -29,7 +31,7 @@ class DecalManager{
 class FoeManager{
     private:
     std::list<std::shared_ptr<Foe>> mainVillain;
-    olc::Decal* visage;
+    olc::Sprite* image;
     float worldRadius;
     public:
     FoeManager(float world);
@@ -37,6 +39,7 @@ class FoeManager{
 
     void update(float fElapsedTime,olc::vf2d movement);
     void initalize(int numFoes,olc::PixelGameEngine* game);
+    void makeRender(olc::Sprite* sprite,olc::vf2d area,olc::PixelGameEngine* game);
     int size();
 };
 

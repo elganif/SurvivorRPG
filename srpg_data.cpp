@@ -168,3 +168,5 @@ void QuadTree::drawTree(olc::Pixel item,olc::Pixel noItem ){
 
 
 
+
+
