@@ -8,6 +8,7 @@
 
     Rectangle(const olc::vf2d& loc, const olc::vf2d& area);
     ~Rectangle();
+    bool contains(const olc::vf2d& point);
     bool contains(const Rectangle& other);
     bool overlaps(const Rectangle& other);
 };

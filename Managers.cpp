@@ -7,12 +7,12 @@
 #include "srpg_data.h"
 #include "Managers.h"
 
-//extern QuadTree* gameObjects ;
-//extern olc::TransformedView* viewer;
 
-// class DecalManager{
+/// class DecalManager
     DecalManager::DecalManager( float world) : worldRadius(world){};
-    DecalManager::~DecalManager(){};
+    DecalManager::~DecalManager(){
+        delete image;
+    };
     void DecalManager::initalize(olc::PixelGameEngine* game){
         srand(time(NULL));
         int failure = 0;
@@ -44,10 +44,10 @@
                 }
             }
             if(valid){
-                std::shared_ptr<Decoration> temp = std::shared_ptr<Decoration>(new Decoration( attempting, grass_size));
+                std::shared_ptr<Decoration> temp = std::make_shared<Decoration>(Decoration( attempting, grass_size));
                 temp->setRender(image);
-                lawn.push_back( temp);
-                srpg_data::gameObjects->insertItem((std::shared_ptr<Entity>)temp);
+                srpg_data::gameObjects->insertItem(temp);
+                lawn.push_back(std::move(temp));
 
             } else {
                 failure ++;
@@ -84,36 +84,34 @@
 //Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
 // class FoeManager
 
-    FoeManager::FoeManager( float world):worldRadius(world){};
-    FoeManager::~FoeManager(){};
+FoeManager::FoeManager( float world):worldRadius(world){};
+FoeManager::~FoeManager(){
+    delete image;
+};
 
     //
-    void FoeManager::initalize(int numFoes,olc::PixelGameEngine* game){
-        float foeSize = 0.05f;
-        olc::vf2d area = {foeSize*2,foeSize*2};
-        olc::vi2d Size = srpg_data::viewer->ScaleToScreen(area) ;
+void FoeManager::initalize(int numFoes,olc::PixelGameEngine* game){
+    float foeSize = 0.05f;
+    olc::vf2d area = {foeSize*2,foeSize*2};
+    olc::vi2d Size = srpg_data::viewer->ScaleToScreen(area) ;
 
-        image = new olc::Sprite(Size.x+1,Size.y+1);
-        makeRender(image,Size,game);
-        //visage = std::shared_ptr<olc::Decal>(new olc::Decal(image));
+    image = new olc::Sprite(Size.x+1,Size.y+1);
+    makeRender(image,Size,game);
 
-        for(int i = 0; i< numFoes;i++){
-            olc::vf2d attempt;
-            float spawnRad = 20;
-            attempt.x = spawnRad*2 * ((float)rand() / (float)RAND_MAX) - spawnRad;
-            attempt.y = spawnRad*2 * ((float)rand() / (float)RAND_MAX) - spawnRad;
+    for(int i = 0; i< numFoes;i++){
+        olc::vf2d attempt;
+        float spawnRad = 20;
+        attempt.x = spawnRad*2 * ((float)rand() / (float)RAND_MAX) - spawnRad;
+        attempt.y = spawnRad*2 * ((float)rand() / (float)RAND_MAX) - spawnRad;
 
-            std::shared_ptr<Foe> theEvil = std::shared_ptr<Foe>(new Foe(attempt,foeSize));
-            theEvil->setRender(image);
-            mainVillain.push_back(theEvil);
+        std::shared_ptr<Foe> theEvil = std::make_shared<Foe>(Foe(attempt,foeSize));
+        theEvil->setRender(image);
+        mainVillain.push_back(theEvil);
+        srpg_data::gameObjects->insertItem(std::move(theEvil));
 
-        }
-
-
-        for(auto V = mainVillain.begin(); V != mainVillain.end();V++){
-            srpg_data::gameObjects->insertItem((std::shared_ptr<Entity>)(*V));
-        }
     }
+}
+
     void FoeManager::makeRender(olc::Sprite* sprite,olc::vf2d area,olc::PixelGameEngine* game){
 
             game->SetDrawTarget(sprite);

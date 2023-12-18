@@ -18,13 +18,13 @@ class DecalManager{
     olc::Sprite* image;
     float worldRadius;
     public:
-    DecalManager( float world);
+    DecalManager(float world);
     ~DecalManager();
 
+    int size();
     void initalize(olc::PixelGameEngine* game);
     void update(float fElapsedTime,olc::vf2d movement);
     void makeRender(olc::Sprite* tSprite,olc::vf2d area,olc::PixelGameEngine* game,olc::Pixel lineColourL);
-    int size();
 };
 
 //Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
@@ -37,10 +37,10 @@ class FoeManager{
     FoeManager(float world);
     ~FoeManager();
 
-    void update(float fElapsedTime,olc::vf2d movement);
-    void initalize(int numFoes,olc::PixelGameEngine* game);
-    void makeRender(olc::Sprite* sprite,olc::vf2d area,olc::PixelGameEngine* game);
     int size();
+    void initalize(int numFoes,olc::PixelGameEngine* game);
+    void update(float fElapsedTime,olc::vf2d movement);
+    void makeRender(olc::Sprite* sprite,olc::vf2d area,olc::PixelGameEngine* game);
 };
 
 

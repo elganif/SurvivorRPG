@@ -8,9 +8,17 @@
 
         Rectangle::~Rectangle(){}
 
+        bool Rectangle::contains(const olc::vf2d& point){
+            if(tl.x < point.x && tl.x + sides.x > point.x &&
+               tl.y < point.y && tl.y + sides.y > point.y ){
+               return true;
+            }
+            return false;
+        }
+
         bool Rectangle::contains(const Rectangle& other){
-            if(tl.x <= other.tl.x && tl.x + sides.x > other.tl.x + other.sides.x &&
-               tl.y <= other.tl.y && tl.y + sides.y > other.tl.y + other.sides.y){
+            if(tl.x < other.tl.x && tl.x + sides.x > other.tl.x + other.sides.x &&
+               tl.y < other.tl.y && tl.y + sides.y > other.tl.y + other.sides.y){
                return true;
             }
             return false;

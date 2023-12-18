@@ -7,19 +7,23 @@
 
 //class QuadTree
 int QuadTree::depthLimit = 4;
+
+/// Genereal constructor for external calls
 QuadTree::QuadTree(olc::vf2d newtl, olc::vf2d newbr, int newdepth)
     :quadArea({newtl,newbr}),depth(newdepth),parentNode(nullptr)
 {}
 
+/// Internally used contsructor that uses a passed rectangle instead of corner coordinates.
 QuadTree::QuadTree(Rectangle newArea, int newdepth,QuadTree* parent)
     :quadArea(newArea),depth(newdepth),parentNode(parent)
 {}
+
 QuadTree::~QuadTree(){
     // to ensure shared pointers and memory are cleaned up properly delete each sub quad and then clear the local list
     for(int i = 0; i < 4; i++){
         delete quads[i];
     }
-    while (entStored.begin() != entStored.end()){
+    while (entStored.size() > 0 ){
         entStored.erase(entStored.begin());
     }
 };
@@ -40,6 +44,7 @@ void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
     return;
 }
 
+/// Checks an area for any items in the tree that overlap however slightly.
 void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>>& returns){
     // collect overlaps from children
     for(int i = 0;i < 4;i++){
@@ -56,19 +61,21 @@ void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>
     return;
 }
 
-
+/// sequentialy and recursively checks every item to ensure it is moved to correct node if needed
+/// - inefficent as many stationary items are checked each frame also leads to potential misses
+/// if an entity moves to overlap a neighboring quad it wont be checked from.
+/// To fix these issues this may be redesigned to be called by entities each time they move instead
+/// of at end of frame.
 void QuadTree::validateLocations(){
     std::list<std::shared_ptr<Entity>> riders;
     for(auto it = entStored.begin(); it != entStored.end(); ){ //no incrementor, all paths will increment
         if(!(*it)->isAlive()){
-            it->reset();
             entStored.erase(it++);
             continue;
         }
         if (depth != 0 && !quadArea.contains((*it)->getBoxCollider())){
             // not at root and item does not fit. Send it up
             riders.push_back((*it));
-            it->reset();
             entStored.erase(it++);
             continue;
         }
@@ -86,7 +93,6 @@ void QuadTree::validateLocations(){
             quads[targetQuad] = new QuadTree(childArea[targetQuad],depth+1,this);
         }
         quads[targetQuad]->insertItem((*it));
-        it->reset();
         entStored.erase(it++);
     }
     for(int i = 0; i < 4; i++){
@@ -104,7 +110,6 @@ void QuadTree::upElevator(std::list<std::shared_ptr<Entity>> &riders){
     for(auto it = riders.begin();it != riders.end(); ){
         if(depth == 0 || quadArea.contains((*it)->getBoxCollider())){
             insertItem((*it));
-            it->reset();
             riders.erase(it++);
             continue;
         } //else
@@ -113,6 +118,8 @@ void QuadTree::upElevator(std::list<std::shared_ptr<Entity>> &riders){
     if(riders.size() > 0)
         parentNode->upElevator(riders);
 }
+
+/// Checks if each node is empty and deletes, if not recurses through undeleted nodes.
 void QuadTree::prune(){
     for(int i = 0; i < 4; i++){
         if(quads[i]){
@@ -126,7 +133,7 @@ void QuadTree::prune(){
     }
 }
 
-
+/// Count of all items in this node and each sub node
 int QuadTree::size()
 {
     int thisCount = entStored.size();
@@ -136,14 +143,17 @@ int QuadTree::size()
 
     return thisCount;
 }
+
+/// Counts total number of nodes in the tree.
 int QuadTree::activity(){
     int numQuads = 1;
     for(int i = 0; i < 4; i++){
-        numQuads += (quads[i])?quads[i]->activity() : 0;
+        numQuads += quads[i] ? quads[i]->activity() : 0;
     }
     return numQuads;
 }
 
+/// Checks for the deepest node
 int QuadTree::curDepth(){
     int depthCharge = depth;
     for (int i = 0; i < 4; i++){
@@ -155,14 +165,18 @@ int QuadTree::curDepth(){
     return depthCharge;
 }
 
+/// Debug function to draw all nodes to the screen.
 void QuadTree::drawTree(olc::Pixel item,olc::Pixel noItem ){
-    for(int i = 0;i < 4; i++)
-        if(quads[i])
-            quads[i]->drawTree(item,noItem);
     if(entStored.size() > 0){
         srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,item);
     } else {
         srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,noItem);
+    }
+
+    for(int i = 0;i < 4; i++){
+        if(quads[i]){
+            quads[i]->drawTree(item,noItem);
+        }
     }
 }
 

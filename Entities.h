@@ -5,7 +5,7 @@ class Projectile;
 class Entity
     {
         protected:
-        olc::Decal* image;
+        olc::Decal* image = nullptr;
         float entSize;
         olc::vf2d location;
         olc::Pixel fColour = olc::DARK_MAGENTA;
@@ -24,7 +24,7 @@ class Entity
 
         public:
         Entity( olc::vf2d spawn, float newSize):location(spawn),entSize(newSize){}
-        virtual ~Entity(){};
+        virtual ~Entity(){delete image;};
 
         void placement(olc::vf2d destiny){
             location = destiny;
@@ -38,35 +38,27 @@ class Entity
         virtual void update(float fElapsedTime, olc::vf2d worldMove){};
         virtual bool isAlive(){return true;};
         virtual void render(){};
-
-
-        void setRender(olc::Sprite* sprite){
-            image = new olc::Decal(sprite);
-        }
-        static void makeRender(olc::Sprite* sprite, olc::vi2d area, olc::PixelGameEngine* game){};
-
         virtual TYPE whoAreYou(){return I_DONT_KNOW;};
 
-        Rectangle getBoxCollider(){
-            return Rectangle({location.x - (entSize),location.y - (entSize)},{entSize*2.0f,entSize*2.0f});
-        }
+
+        void setRender(olc::Sprite* sprite);
+
+        static void makeRender(olc::Sprite* sprite, olc::vi2d area, olc::PixelGameEngine* game);
+
+
+        Rectangle getBoxCollider();
 
         // rotates a point around center
-        olc::vf2d rotatePt(olc::vf2d point,olc::vf2d angle){
-            olc::vf2d updatedpoint = point - location;
-
-            updatedpoint.x = (point.y * angle.x) + (point.x * angle.y);
-            updatedpoint.y = -(point.x * angle.x) + (point.y * angle.y);
-            updatedpoint += location;
-            return updatedpoint;
-        }
+        olc::vf2d rotatePt(olc::vf2d point,olc::vf2d angle);
 
     };
 
 class Hero : public Entity
     {
     private:
-        float fireRate = 1000; // Projectiles per second
+        float MaxHP = 100.0f;
+        float HP = 100.0f;
+        float fireRate = 100; // Projectiles per second
         float projectileCooldown = 0;
         bool solidCollision = true;
     public:
@@ -75,9 +67,13 @@ class Hero : public Entity
         TYPE whoAreYou();
         bool isAlive();
         void update(float fElapsedTime, olc::vf2d worldMove);
+        float getHP();
+
+
         bool fireProjectile(olc::vf2d& target, std::list<std::shared_ptr<Projectile>>& bullets, olc::PixelGameEngine* game);
         bool projectileReady();
         olc::vf2d bump(olc::vf2d otherLoc,float otherSize);
+
         void setImage(olc::Decal* heroicImage) {image = heroicImage; };
         void render();
         void makeRender(olc::Sprite* sprite, olc::vf2d area, olc::PixelGameEngine* game);
@@ -87,7 +83,7 @@ class Hero : public Entity
 class Foe : public Entity
     {
     private:
-        //olc::Decal* image;
+
         bool solidCollision = true;
         float HP = 100.0f;
 
@@ -102,7 +98,7 @@ class Foe : public Entity
 
         void render();
         static void makeRender(olc::Sprite* sprite, olc::vf2d area, olc::PixelGameEngine* game);
-        // make Render should be moved out to its own module that will contain many different entity draw routines
+        // make Render should be moved out to its own module that will contain many routines for many different things
     };
 
 class Projectile : public Entity
