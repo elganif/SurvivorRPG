@@ -3,37 +3,38 @@
 //#include "Rectangle.h"
 struct Rectangle;
 
-class Interactable{
+class UIElement{
 
     protected:
     olc::PixelGameEngine* srpg;
-    olc::vf2d tl;
-    olc::vf2d sides;
+    olc::vi2d tl;
+    olc::vi2d sides;
     olc::Sprite* surface = nullptr;
 
     public:
-    Interactable(olc::PixelGameEngine* game, olc::vf2d topL, olc::vf2d area):srpg(game),tl(topL),sides(area){}
+    UIElement(olc::PixelGameEngine* game, olc::vf2d topL, olc::vf2d area):srpg(game),tl(topL),sides(area){
+        surface = new olc::Sprite(sides.x,sides.y);
+    }
 
-    ~Interactable(){
+    virtual ~UIElement(){
         delete surface;
     }
 
-    virtual void render(srpg_data::controls& inputs){};
+    virtual olc::vi2d render(srpg_data::controls& inputs)=0;
 };
 
-class TitlePlate : public Interactable {
+class TitlePlate : public UIElement {
     std::string name;
-    std::function<void()> execute;
     int magnitude;
     public:
     TitlePlate(olc::PixelGameEngine* game,std::string name,olc::vf2d topL, olc::vf2d area,int fontSize);
     ~TitlePlate(){};
 
-    void render(srpg_data::controls& inputs);
+    olc::vi2d render(srpg_data::controls& inputs);
 
 };
 
-class Button : public Interactable {
+class Button : public UIElement {
     std::string name;
     std::function<void()> execute;
 
@@ -41,32 +42,32 @@ class Button : public Interactable {
     Button(olc::PixelGameEngine* game,std::string name,olc::vf2d topL, olc::vf2d area,std::function<void()> task);
     ~Button(){};
 
-    void render(srpg_data::controls& inputs);
+    olc::vi2d render(srpg_data::controls& inputs);
 
 };
 
-class MenuContainer : Interactable {
+class MenuContainer : UIElement {
 
-    std::vector<std::unique_ptr<Interactable>> components;
+    std::vector<std::unique_ptr<UIElement>> components;
 
     public:
     MenuContainer(olc::PixelGameEngine* game, olc::vf2d topL, olc::vf2d area);
     ~MenuContainer(){};
-    void render(srpg_data::controls& inputs);
-    void addItem(std::unique_ptr<Interactable> element);
+    olc::vi2d render(srpg_data::controls& inputs);
+    void addItem(std::unique_ptr<UIElement> element);
 
 };
 
-class Menu : Interactable {
+class Menu : UIElement {
 
-    std::vector<std::unique_ptr<Interactable>> components;
+    std::vector<std::unique_ptr<UIElement>> components;
 
     public:
     Menu(olc::PixelGameEngine* game, olc::vf2d topL, olc::vf2d area);
     ~Menu(){};
 
-    void render(srpg_data::controls& inputs);
-    void addItem(std::unique_ptr<Interactable> element);
+    olc::vi2d render(srpg_data::controls& inputs);
+    void addItem(std::unique_ptr<UIElement> element);
 };
 
 #endif // MENUS_H_INCLUDED

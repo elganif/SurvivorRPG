@@ -57,7 +57,7 @@ class Entity;
 //        class GamePad;
 //}
 namespace srpg_data{
-        //extern olc::GamePad* controller;
+        extern const bool debugTools;
         extern std::unique_ptr<QuadTree> gameObjects;
         extern olc::TransformedView* viewer;
         extern uint8_t renderLayerFloor;

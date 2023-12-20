@@ -16,35 +16,37 @@ class Entity
         enum TYPE {
             HERO,
             FOE,
-            DECORATION,
             PROJECTILE,
-            I_DONT_KNOW
-
+            DECORATION
         };
 
+        static int uuid;
+        const int entID;
+
         public:
-        Entity( olc::vf2d spawn, float newSize):location(spawn),entSize(newSize){}
-        virtual ~Entity(){delete image;};
+        Entity(olc::vf2d spawn, float newSize);
 
-        void placement(olc::vf2d destiny){
-            location = destiny;
-        }
-        void movement(olc::vf2d destiny){
-            location += destiny;
-        }
+        virtual ~Entity(){delete image;}
+
+        ///pure virtual functions that all derived must implement
+        virtual void render()=0;
+        virtual void update(float fElapsedTime, olc::vf2d worldMove)=0;
+        virtual TYPE whoAreYou()=0;
+
+        virtual bool isAlive(){return true;}
+
+        int getUID(){return entID;}
+
+        void placement(olc::vf2d destiny){location = destiny;}
+        void movement(olc::vf2d destiny){location += destiny;}
         olc::vf2d getLocal(){return location;}
-        float getSpeed(){return speed;};
-        float getSize(){return entSize;}
-        virtual void update(float fElapsedTime, olc::vf2d worldMove){};
-        virtual bool isAlive(){return true;};
-        virtual void render(){};
-        virtual TYPE whoAreYou(){return I_DONT_KNOW;};
 
+        float getSize(){return entSize;}
+        float getSpeed(){return speed;}
 
         void setRender(olc::Sprite* sprite);
 
         static void makeRender(olc::Sprite* sprite, olc::vi2d area, olc::PixelGameEngine* game);
-
 
         Rectangle getBoxCollider();
 
@@ -83,15 +85,14 @@ class Hero : public Entity
 class Foe : public Entity
     {
     private:
-
-        bool solidCollision = true;
+        float maxHP = 100.0f;
         float HP = 100.0f;
 
     public:
         Foe( olc::vf2d spawn, float newSize);
         ~Foe();
-        TYPE whoAreYou();
         void update(float fElapsedTime, olc::vf2d worldMove);
+        TYPE whoAreYou();
         bool isAlive();
         void onOverlap(std::shared_ptr<Entity> other);
         olc::vf2d bump(olc::vf2d otherLoc,float otherSize);
@@ -140,6 +141,8 @@ class Decoration : public Entity
         ~Decoration();
         TYPE whoAreYou();
         void render();
+
+        void update(float fElapsedTime, olc::vf2d worldMove);
 
 };
 

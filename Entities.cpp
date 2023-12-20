@@ -7,6 +7,10 @@
 #include "Entities.h"
 
 /// class Entity
+
+int Entity::uuid;
+Entity::Entity(olc::vf2d spawn, float newSize):location(spawn),entSize(newSize),entID(uuid++){}
+
  void Entity::setRender(olc::Sprite* sprite){
     image = new olc::Decal(sprite);
 }
@@ -161,6 +165,8 @@ bool Foe::isAlive(){
 }
 
 void Foe::onOverlap(std::shared_ptr<Entity> other){
+    if (other->getUID() == entID)
+        return; // nothing to do if the other is myself
     if(other->whoAreYou() == HERO){
         //Collide with Hero
         if(other->isAlive()){
@@ -180,9 +186,9 @@ void Foe::onOverlap(std::shared_ptr<Entity> other){
 }
 
 olc::vf2d Foe::bump(olc::vf2d otherLoc,float otherSize){
-    if(otherLoc == location){
-        return {0.0f,0.0f};//assume same entity and skip collision
-    }
+//    if(otherLoc == location){
+//        return {0.0f,0.0f};//assume same entity and skip collision
+//    }
     float entDist2 = (otherLoc - location).mag(); // magnitude of distance
     float colideDist2 = (otherSize + entSize); // also squared for pythagoras without roots
     if(colideDist2 > entDist2){
@@ -283,7 +289,7 @@ void Projectile::makeRender(olc::Sprite* tSprite,olc::vf2d area,olc::PixelGameEn
 
 
 /// class Decoration : public Entity
-Decoration::Decoration::Decoration( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
+Decoration::Decoration( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
 
     lineColour = olc::DARK_GREEN;
 }
@@ -295,5 +301,8 @@ void Decoration::render(){
 
 }
 
+void Decoration::update(float fElapsedTime, olc::vf2d worldMove){
+    movement(worldMove);
+}
 
 

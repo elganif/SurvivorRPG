@@ -26,6 +26,7 @@ using std::vector;
 using std::list;
 using std::shared_ptr;
 
+const bool srpg_data::debugTools = false; /// Set false to skip debug
 std::unique_ptr<QuadTree> srpg_data::gameObjects;
 olc::TransformedView* srpg_data::viewer;
 olc::GamePad* controller = nullptr;
@@ -41,7 +42,7 @@ class SurvivorRPG : public olc::PixelGameEngine
 bool gameOpen = true;
 float screenRatio;
 float worldRadius = 10.0;
-std::unique_ptr<Interactable> buttons;
+std::unique_ptr<UIElement> buttons;
 
 std::unique_ptr<Menu> mainMenu = nullptr;
 std::unique_ptr<Menu> gameOverScreen = nullptr;
@@ -49,7 +50,9 @@ std::unique_ptr<GameWorld> gamePlay;
 
 bool menus = true;
 
+
 std::chrono::_V2::high_resolution_clock::time_point startTime;
+
 
 public:
 	SurvivorRPG()
@@ -96,16 +99,16 @@ public:
         olc::vf2d marea = {ScreenWidth() *0.2f , ScreenHeight() * 0.5f};
         float heighttoadd = 0;
         mainMenu = std::make_unique<Menu>(this,mtl,marea);
-        mainMenu->addItem(std::unique_ptr<Interactable>(new TitlePlate(this,"Roles of",olc::vf2d(5,heighttoadd+=5),{marea.x-10,30},3)));
-        mainMenu->addItem(std::unique_ptr<Interactable>(new TitlePlate(this,"Survival",olc::vf2d(5,heighttoadd+=35),{marea.x-10,30},3)));
+        mainMenu->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"Roles of",olc::vf2d(5,heighttoadd+=5),{marea.x-10,30},3)));
+        mainMenu->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"Survival",olc::vf2d(5,heighttoadd+=35),{marea.x-10,30},3)));
 
-        mainMenu->addItem(std::unique_ptr<Interactable>(new Button(this,"START",{3,heighttoadd+=35},{marea.x - 6,30},
+        mainMenu->addItem(std::unique_ptr<UIElement>(new Button(this,"START",{3,heighttoadd+=35},{marea.x - 6,30},
                         [&]{gamePlay->start();menus = false;})));
 
-        mainMenu->addItem(std::unique_ptr<Interactable>(new Button(this,"Restart",{3,heighttoadd+=35},{marea.x - 6,30},
+        mainMenu->addItem(std::unique_ptr<UIElement>(new Button(this,"Restart",{3,heighttoadd+=35},{marea.x - 6,30},
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);gamePlay->start();menus = false;})));
 
-        mainMenu->addItem(std::unique_ptr<Interactable>(new Button(this,"EXIT",{3,heighttoadd+=35},{marea.x - 6,30},
+        mainMenu->addItem(std::unique_ptr<UIElement>(new Button(this,"EXIT",{3,heighttoadd+=35},{marea.x - 6,30},
                         [&]{gameOpen = false;menus = false;})));
 
         mtl = {(ScreenWidth() - ScreenHeight())*0.5f + (ScreenHeight() * 0.25f), ScreenHeight() * 0.25f};
@@ -114,14 +117,15 @@ public:
         heighttoadd = 0;
         gameOverScreen = std::make_unique<Menu>(this,mtl,marea);
 
-        gameOverScreen->addItem(std::unique_ptr<Interactable>(new TitlePlate(this,"GAME",olc::vf2d(5,heighttoadd+=5),{marea.x-10,30},2)));
-        gameOverScreen->addItem(std::unique_ptr<Interactable>(new TitlePlate(this,"OVER",olc::vf2d(5,heighttoadd+=35),{marea.x-10,30},2)));
+        gameOverScreen->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"GAME",olc::vf2d(5,heighttoadd+=5),{marea.x-10,30},2)));
+        gameOverScreen->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"OVER",olc::vf2d(5,heighttoadd+=35),{marea.x-10,30},2)));
 
-        gameOverScreen->addItem(std::unique_ptr<Interactable>(new Button(this,"Restart",{3,heighttoadd+=35},{marea.x - 6,30},
+        gameOverScreen->addItem(std::unique_ptr<UIElement>(new Button(this,"Restart",{3,heighttoadd+=35},{marea.x - 6,30},
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);gamePlay->start();menus = false;})));
-        gameOverScreen->addItem(std::unique_ptr<Interactable>(new Button(this,"EXIT",{3,heighttoadd+=35},{marea.x - 6,30},
+        gameOverScreen->addItem(std::unique_ptr<UIElement>(new Button(this,"EXIT",{3,heighttoadd+=35},{marea.x - 6,30},
                         [&]{gameOpen = false;menus = false;})));
-        startTime = std::chrono::high_resolution_clock::now();
+        if(srpg_data::debugTools)
+            startTime = std::chrono::high_resolution_clock::now();
 		return true;
 	}
 
@@ -187,10 +191,14 @@ public:
 	int PGEtimemax = 0;
 	int menutimemax = 0;
 	int enginetimemax = 0;
+    std::chrono::_V2::high_resolution_clock::time_point endGameTime;
+    std::chrono::_V2::high_resolution_clock::time_point endPGETime;
+    std::chrono::_V2::high_resolution_clock::time_point endMenuTime;
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		std::chrono::_V2::high_resolution_clock::time_point endPGETime = std::chrono::high_resolution_clock::now();
+		if(srpg_data::debugTools)
+            endPGETime = std::chrono::high_resolution_clock::now();
 		// called once per frame
         // Clear all layers for new frame draw.
         SetDrawTarget(srpg_data::renderLayerMenu);
@@ -218,57 +226,65 @@ public:
 
         }
         renderUI(inputs.target); //TODO: build properly
-        std::chrono::_V2::high_resolution_clock::time_point endMenuTime = std::chrono::high_resolution_clock::now();
+
+        if(srpg_data::debugTools)
+            endMenuTime = std::chrono::high_resolution_clock::now();
+
         if(!menus){
             gamePlay->run(fElapsedTime,inputs);
         }
         gamePlay->draw();
 
-        std::chrono::_V2::high_resolution_clock::time_point endGameTime = std::chrono::high_resolution_clock::now();
+        if(srpg_data::debugTools)
+            endGameTime = std::chrono::high_resolution_clock::now();
 
         SetDrawTarget(nullptr);
-        std::string temp = "";
-        int wholetime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
-        temp = std::to_string(wholetime) + ": Full";
-        FillRect(ScreenWidth()-300,10,100*((float)wholetime/(float)wholetimemax),10,olc::DARK_GREY);
-        DrawRect(ScreenWidth()-300,10,100*((float)wholetimemax/(float)wholetimemax),10,olc::GREY);
-        DrawString(ScreenWidth()-(temp.size()*8),10,temp);
-        wholetimemax = wholetimemax > wholetime ? wholetimemax : wholetime;
-        DrawString(ScreenWidth()-(temp.size()*8),20,std::to_string(wholetimemax));
 
-        int PGEtime = std::chrono::duration_cast<std::chrono::nanoseconds>(endPGETime - startTime).count();
-        temp = "PGE: " + std::to_string(PGEtime);
-        FillRect(ScreenWidth()-300,30,100*((float)PGEtime/(float)wholetimemax),10,olc::DARK_GREY);
-        DrawRect(ScreenWidth()-300,30,100*((float)PGEtimemax/(float)wholetimemax),10,olc::GREY);
-        DrawString(ScreenWidth()-(temp.size()*8),30,temp);
-        PGEtimemax = PGEtimemax > PGEtime ? PGEtimemax : PGEtime;
-        DrawString(ScreenWidth()-(temp.size()*8),40,std::to_string(PGEtimemax));
+        if(srpg_data::debugTools){
+            std::string temp = "";
+            int wholetime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - startTime).count();
+            temp = std::to_string(wholetime) + ": Full";
+            FillRect(ScreenWidth()-300,10,100*((float)wholetime/(float)wholetimemax),10,olc::DARK_GREY);
+            DrawRect(ScreenWidth()-300,10,100*((float)wholetimemax/(float)wholetimemax),10,olc::GREY);
+            DrawString(ScreenWidth()-(temp.size()*8),10,temp);
+            wholetimemax = wholetimemax > wholetime ? wholetimemax : wholetime;
+            DrawString(ScreenWidth()-(temp.size()*8),20,std::to_string(wholetimemax));
 
-        int menutime = std::chrono::duration_cast<std::chrono::nanoseconds>(endMenuTime - endPGETime).count();
-        temp = "Menu: " + std::to_string(menutime);
-        FillRect(ScreenWidth()-300,50,100*((float)menutime/(float)wholetimemax),10,olc::DARK_GREY);
-        DrawRect(ScreenWidth()-300,50,100*((float)menutimemax/(float)wholetimemax),10,olc::GREY);
-        DrawString(ScreenWidth()-(temp.size()*8),50,temp);
-        menutimemax = menutimemax > menutime ? menutimemax : menutime;
-        DrawString(ScreenWidth()-(temp.size()*8),60,std::to_string(menutimemax));
 
-        int enginetime = std::chrono::duration_cast<std::chrono::nanoseconds>(endGameTime - endPGETime).count();
-        temp = "Engine: " + std::to_string(enginetime);
-        FillRect(ScreenWidth()-300,70,100*((float)enginetime/(float)wholetimemax),10,olc::DARK_GREY);
-        DrawRect(ScreenWidth()-300,70,100*((float)enginetimemax/(float)wholetimemax),10,olc::GREY);
-        DrawString(ScreenWidth()-(temp.size()*8),70,temp);
-        enginetimemax = enginetimemax > enginetime ? enginetimemax : enginetime;
-        DrawString(ScreenWidth()-(temp.size()*8),80,std::to_string(enginetimemax));
 
-        startTime = std::chrono::high_resolution_clock::now();
+            int PGEtime = std::chrono::duration_cast<std::chrono::nanoseconds>(endPGETime - startTime).count();
+            temp = "PGE: " + std::to_string(PGEtime);
+            FillRect(ScreenWidth()-300,30,100*((float)PGEtime/(float)wholetimemax),10,olc::DARK_GREY);
+            DrawRect(ScreenWidth()-300,30,100*((float)PGEtimemax/(float)wholetimemax),10,olc::GREY);
+            DrawString(ScreenWidth()-(temp.size()*8),30,temp);
+            PGEtimemax = PGEtimemax > PGEtime ? PGEtimemax : PGEtime;
+            DrawString(ScreenWidth()-(temp.size()*8),40,std::to_string(PGEtimemax));
 
-        if(GetKey(olc::Key::F1).bReleased){
-            wholetimemax = 1;
-            PGEtimemax = 0;
-            menutimemax = 0;
-            enginetimemax = 0;
+            int menutime = std::chrono::duration_cast<std::chrono::nanoseconds>(endMenuTime - endPGETime).count();
+            temp = "Menu: " + std::to_string(menutime);
+            FillRect(ScreenWidth()-300,50,100*((float)menutime/(float)wholetimemax),10,olc::DARK_GREY);
+            DrawRect(ScreenWidth()-300,50,100*((float)menutimemax/(float)wholetimemax),10,olc::GREY);
+            DrawString(ScreenWidth()-(temp.size()*8),50,temp);
+            menutimemax = menutimemax > menutime ? menutimemax : menutime;
+            DrawString(ScreenWidth()-(temp.size()*8),60,std::to_string(menutimemax));
+
+            int enginetime = std::chrono::duration_cast<std::chrono::nanoseconds>(endGameTime - endPGETime).count();
+            temp = "Engine: " + std::to_string(enginetime);
+            FillRect(ScreenWidth()-300,70,100*((float)enginetime/(float)wholetimemax),10,olc::DARK_GREY);
+            DrawRect(ScreenWidth()-300,70,100*((float)enginetimemax/(float)wholetimemax),10,olc::GREY);
+            DrawString(ScreenWidth()-(temp.size()*8),70,temp);
+            enginetimemax = enginetimemax > enginetime ? enginetimemax : enginetime;
+            DrawString(ScreenWidth()-(temp.size()*8),80,std::to_string(enginetimemax));
+
+            startTime = std::chrono::high_resolution_clock::now();
+
+            if(GetKey(olc::Key::F1).bReleased){
+                wholetimemax = 1;
+                PGEtimemax = 0;
+                menutimemax = 0;
+                enginetimemax = 0;
+            }
         }
-
 
 		return gameOpen; // if gameOpen becomes false this will close the program
 	}
@@ -288,11 +304,13 @@ public:
         FillRect(0, 0, uiWidth, ScreenHeight(), olc::VERY_DARK_BLUE);
         FillRect(ScreenWidth() - uiWidth, 0, ScreenHeight(), ScreenHeight(), olc::VERY_DARK_BLUE);
 
-        //Debug data code
-        DrawString({50,80},"tot Quads:" + std::to_string(srpg_data::gameObjects->activity()),olc::BLUE);
-        DrawString({50,90},"quad depth:" + std::to_string(srpg_data::gameObjects->curDepth()),olc::BLUE);
+        if(srpg_data::debugTools){
 
-        //crosshair for targeting
+            //Debug data code
+            DrawString({50,80},"tot Quads:" + std::to_string(srpg_data::gameObjects->activity()),olc::BLUE);
+            DrawString({50,90},"quad depth:" + std::to_string(srpg_data::gameObjects->curDepth()),olc::BLUE);
+        }
+        //crosshair for targeting - TODO: figure out where this code actually fits. Design proper crosshairs?
         SetDrawTarget(nullptr);
         Clear(olc::BLANK);
         srpg_data::viewer->DrawLine( target.x+0.01,target.y,target.x-0.01,target.y,olc::DARK_MAGENTA);

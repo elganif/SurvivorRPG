@@ -57,7 +57,7 @@
 
     void DecalManager::update(float fElapsedTime,olc::vf2d movement){
         for(int i = 0;i < lawn.size();i++){
-            lawn[i]->movement(movement);
+            lawn[i]->update(fElapsedTime,movement);
             if(lawn[i]->getLocal().x > worldRadius)
                 lawn[i]->movement({-worldRadius * 2,0});
             if(lawn[i]->getLocal().x < -worldRadius)
