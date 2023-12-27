@@ -11,6 +11,8 @@ class Entity;
     {
         public:
         static int depthLimit;
+
+
         private:
         int depth;
         Rectangle quadArea;
@@ -28,34 +30,35 @@ class Entity;
                  Rectangle(quadArea.tl + quadrentSize,quadrentSize)};
 
 
+        QuadTree(Rectangle newArea, int newdepth = 0,QuadTree* parent = nullptr);
+
         public:
         QuadTree(olc::vf2d newtl, olc::vf2d newbr, int newdepth = 0);
 
-        QuadTree(Rectangle newArea, int newdepth = 0,QuadTree* parent = nullptr);
         ~QuadTree();
 
         void insertItem(const std::shared_ptr<Entity>& newEnt);
 
         void getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>>& returns);
 
+        void validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
+        void upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
+        void downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
+        void removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
 
-        void validateLocations();
-        void upElevator(std::list<std::shared_ptr<Entity>> &riders);
-        void prune();
+        void clean();
 
         int size();
         int activity();
         int curDepth();
-        void drawTree(olc::Pixel item,olc::Pixel noItem );
+        void drawTree(Rectangle area, olc::Pixel item, olc::Pixel noItem );
 
-        /// Testing code for prfiling different depth limits.
+        /// Testing code for profiling different depth limits.
         void adjustDepth(int change){depthLimit += change; if(depthLimit < 0) depthLimit = 0;}
     };
 
 
-//namespace olc{
-//        class GamePad;
-//}
+
 namespace srpg_data{
         extern const bool debugTools;
         extern std::unique_ptr<QuadTree> gameObjects;
@@ -76,4 +79,5 @@ namespace srpg_data{
 
         };
 };
+
 #endif // SRPG_DATA_H_INCLUDED

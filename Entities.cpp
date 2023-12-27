@@ -7,26 +7,73 @@
 #include "Entities.h"
 
 /// class Entity
+/// Base object of all items in the world.
 
+/// Declaration of static uuid variable. Used in generation of a unique interger for each entity created.
 int Entity::uuid;
+
 Entity::Entity(olc::vf2d spawn, float newSize):location(spawn),entSize(newSize),entID(uuid++){}
 
- void Entity::setRender(olc::Sprite* sprite){
-    image = new olc::Decal(sprite);
+void Entity::placement(olc::vf2d destiny){
+    location = destiny;
+    if(hostTreeNode)
+        hostTreeNode->validateEnt(hostTreeNode,myself);
+
+}
+void Entity::movement(olc::vf2d destiny){
+    location += destiny;
+    if(hostTreeNode)
+        hostTreeNode->validateEnt(hostTreeNode,myself);
 }
 
-// Make Render may be moved to its own function to import instructions from config files.
-void Entity::makeRender(olc::Sprite* sprite, olc::vi2d area, olc::PixelGameEngine* game){
-game->SetDrawTarget(sprite);
+/// Used to create entity decal out of sprite passed in
+void Entity::setRender(std::shared_ptr<olc::Sprite> sprite){
+    image = std::shared_ptr<olc::Decal>(new olc::Decal(sprite.get()));
+}
+
+/// Used to directly specify a Decal that may be shared by different entities
+void Entity::setSharedDecal(std::shared_ptr<olc::Decal> tDecal){
+    image = tDecal;
+}
+
+/// returns if entity is needed or can be removed from lists and other systems
+bool Entity::isValid(){
+    if(whatIsLife()){
+        return true;
+    } /// Else entity is dead
+    if (hostTreeNode){
+        hostTreeNode->removeMe(hostTreeNode,myself);
+    }
+    return false;
+
+}
+
+bool Entity::operator == (const Entity& other) const{
+    return entID == other.entID;
+}
+bool Entity::operator != (const Entity& other) const{
+    return !( *this == other);
+}
+
+/// used by QuadTree to give the entity information about where it sits. Used for calling validation on the tree.
+void Entity::setTreeLocation(QuadTree* treeNode, std::list<std::shared_ptr<Entity>>::iterator ent){
+    hostTreeNode = treeNode;
+    myself = ent;
+}
+
+// Make Render may be moved to its own class later to import instructions from config files.
+void Entity::makeRender(std::shared_ptr<olc::Sprite> sprite, olc::vi2d area, olc::PixelGameEngine* game){
+game->SetDrawTarget(sprite.get());
     game->Clear(olc::MAGENTA);
     game->SetDrawTarget(nullptr);
 }
 
+/// gets a rectangular collsion box for quick checking if entities are close enough to interact
 Rectangle Entity::getBoxCollider(){
     return Rectangle({location.x - (entSize),location.y - (entSize)},{entSize*2.0f,entSize*2.0f});
 }
 
-// rotates a point around center
+/// rotates a point around center of the entity
 olc::vf2d Entity::rotatePt(olc::vf2d point,olc::vf2d angle){
     olc::vf2d updatedpoint = point - location;
 
@@ -48,7 +95,7 @@ Hero::~Hero(){};
 
 Entity::TYPE Hero::whoAreYou(){return HERO;}
 
-bool Hero::isAlive(){return HP > 0.0f;}
+bool Hero::whatIsLife(){return HP > 0.0f;}
 
 float Hero::getHP(){
     return HP;
@@ -60,7 +107,7 @@ void Hero::update(float fElapsedTime, olc::vf2d worldMove){
 
 bool Hero::fireProjectile(olc::vf2d& target, std::list<std::shared_ptr<Projectile>>& bullets, olc::PixelGameEngine* game){
     if(projectileReady()){
-        std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(location,0.05f,0.025f,((float)rand() / (float)RAND_MAX) * 100.0f,target,1,game);
+        std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(getLocal(),0.05f,0.025f,((float)rand() / (float)RAND_MAX) * 100.0f,target,1,game);
         projectileCooldown -= 1.0/fireRate;
         bullets.push_back(temp);
         srpg_data::gameObjects->insertItem(temp);
@@ -77,18 +124,16 @@ bool Hero::projectileReady(){
 
 olc::vf2d Hero::bump(olc::vf2d otherLoc,float otherSize){
 
-    if(otherLoc == location){
-        return {0,0};//assume same entity and skip collision
-    }
-    float entDist2 = (otherLoc - location).mag(); // magnitude of distance
-    float colideDist2 = (otherSize + entSize); // also squared to skip squareroots
-    if(colideDist2 > entDist2){
-        float overLap = colideDist2 - entDist2;
-        olc::vf2d bumpDirection = (location - otherLoc).norm();
-        olc::vf2d thisMove = bumpDirection*overLap*0.5;
-        HP = HP - ( 1.0f/60.0f ); // VERY BAD HACK: TODO Do better - for now remove hp equivelent to time tick
-        movement(thisMove*0.8);
-        return (-thisMove*1.2);
+    olc::vf2d entRelLoc = (otherLoc - getLocal()); // magnitude of distance
+    float colideDist = (otherSize + entSize);
+    if(colideDist * colideDist > entRelLoc.mag2()){
+        float overLap = colideDist - entRelLoc.mag();
+
+        olc::vf2d thisMove = entRelLoc.norm()*overLap*0.5f;
+
+        HP = HP - ( 1.0f/60.0f ); // KINDA BAD HACK: TODO Build proper enemy attack function - for now remove hp equivelent to time tick
+        movement(-thisMove*0.8);
+        return (thisMove*1.2);
 
     } // else not collideing, return 0
     return{0,0};
@@ -96,7 +141,7 @@ olc::vf2d Hero::bump(olc::vf2d otherLoc,float otherSize){
 
 
 void Hero::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image);
+    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
 
     srpg_data::viewer->FillRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
     getBoxCollider().sides.x*(HP/MaxHP),0.2f*entSize,olc::GREEN);
@@ -104,13 +149,15 @@ void Hero::render(){
     getBoxCollider().sides.x,0.2f*entSize,olc::DARK_GREY);
 
     //collider Debug
-    srpg_data::viewer->DrawCircle(location,entSize,olc::VERY_DARK_BLUE);
+    if(srpg_data::debugTools){
+        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_BLUE);
+    }
     //srpg_data::viewer->DrawRect(getBoxCollider().tl,getBoxCollider().sides);
 }
 
-void Hero::makeRender(olc::Sprite* sprite,olc::vf2d area,olc::PixelGameEngine* game){
+void Hero::makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::PixelGameEngine* game){
 
-    game->SetDrawTarget(sprite);
+    game->SetDrawTarget(sprite.get());
     game->Clear(olc::BLANK);
 
     olc::Pixel colours = olc::BLUE;
@@ -151,33 +198,30 @@ Foe::~Foe(){};
 
 Entity::TYPE Foe::whoAreYou(){ return FOE;}
 
-void Foe::update(float fElapsedTime, olc::vf2d worldMove){
-    if (isAlive()) {
-        location += (-location.norm() * speed * fElapsedTime);
-
-
-    }
-    location += worldMove;
+float Foe::getHP(){
+    return HP;
 }
 
-bool Foe::isAlive(){
+void Foe::update(float fElapsedTime, olc::vf2d worldMove){
+    if (isValid()) {
+        movement(-getLocal().norm() * speed * fElapsedTime);
+    }
+    movement( worldMove);
+}
+
+bool Foe::whatIsLife(){
     return HP > 0.0f;
 }
 
 void Foe::onOverlap(std::shared_ptr<Entity> other){
-    if (other->getUID() == entID)
-        return; // nothing to do if the other is myself
+
     if(other->whoAreYou() == HERO){
         //Collide with Hero
-        if(other->isAlive()){
-            movement(std::dynamic_pointer_cast<Hero>(other)->bump(location,entSize));
-        }
+            movement(std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize));
     }
     if(other->whoAreYou() == FOE){
         //Collide with Friendly
-        if(other->isAlive()){
-            movement(std::dynamic_pointer_cast<Foe>(other)->bump(location,entSize));
-        }
+        movement(std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize));
     }
     if(other->whoAreYou() == PROJECTILE){
         // subtract projectiles damage from hp
@@ -186,29 +230,35 @@ void Foe::onOverlap(std::shared_ptr<Entity> other){
 }
 
 olc::vf2d Foe::bump(olc::vf2d otherLoc,float otherSize){
-//    if(otherLoc == location){
-//        return {0.0f,0.0f};//assume same entity and skip collision
-//    }
-    float entDist2 = (otherLoc - location).mag(); // magnitude of distance
-    float colideDist2 = (otherSize + entSize); // also squared for pythagoras without roots
-    if(colideDist2 > entDist2){
-        float overLap = colideDist2 - entDist2;
-        olc::vf2d bumpDirection = (location - otherLoc).norm();
-        olc::vf2d thisMove = bumpDirection*overLap*0.5f;
-        movement(thisMove);
-        return -thisMove;
 
-    } // else not collideing, return 0
-    return{0.0f,0.0f};
+    olc::vf2d entRelLoc = (otherLoc - getLocal()); // magnitude of distance
+    float colideDist = (otherSize + entSize);
+    if(colideDist * colideDist > entRelLoc.mag2()){
+        float overLap = colideDist - entRelLoc.mag();
+
+        olc::vf2d thisMove = entRelLoc.norm()*overLap*0.5f;
+        movement(-thisMove);
+        return thisMove;
+
+    } // else not actually collideing, return 0
+    return {0.0f,0.0f};
 }
 
 void Foe::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image);
+    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
 
     // debug collider
-    srpg_data::viewer->DrawCircle(location,entSize,olc::VERY_DARK_RED);
+    if(srpg_data::debugTools){
+        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_RED);
+    }
 }
-
+//bool Foe::operator == (const Entity& other) const{
+//    return entID == other.entID;
+//}
+bool Foe::operator < (const Foe& other)
+{
+return (HP < other.HP );
+}
 /// class Projectile : public Entity
 Projectile::Projectile( olc::vf2d spawn, float newSize, float width, float duration,
                         olc::vf2d orientation,int hitCount, olc::PixelGameEngine* game)
@@ -218,40 +268,43 @@ Projectile::Projectile( olc::vf2d spawn, float newSize, float width, float durat
         fColour = olc::DARK_GREY;
 
         olc::vi2d Size = srpg_data::viewer->ScaleToScreen({shape,entSize});
-        sprite = new olc::Sprite(Size.x+1,Size.y+1);
+        sprite = std::make_shared<olc::Sprite>(Size.x+1,Size.y+1);
         Projectile::makeRender(sprite,Size,game);
         setRender(sprite);
 }
 
-Projectile::~Projectile(){}//delete sprite;};
+Projectile::~Projectile(){}
 
 void Projectile::update(float fElapsedTime, olc::vf2d worldMove){
-    if (isAlive()) {
-        location = location + (direction * fElapsedTime) + worldMove;
+    if (isValid()) {
+        movement( (direction * fElapsedTime) + worldMove);
         lifespan -= fElapsedTime;
 
     }
 
 }
 
-bool Projectile::isAlive()
+bool Projectile::whatIsLife()
 {
     return (lifespan > 0.0f && hits > 0);
 }
-
-float Projectile::impact(Entity* other){
-    // eventually should check Entity for if it obliterates bullets (sets hits to zero) or not
-    if(isAlive() && (location - other->getLocal()).mag2() <= other->getSize() * other->getSize()){
-        hits--;
-        return 10.0f;// Damage for now, eventualy should be struct of effects
-    }
-    return 0.0f;
-}
-
+/// Sets values used to determine is Alive to 0
 void Projectile::kill(){
     lifespan = 0.0f;
     hits = 0;
 }
+
+/// What does a projectile do when it hits another entity
+float Projectile::impact(Entity* other){
+
+    if(isValid() && (getLocal() - other->getLocal()).mag2() <= other->getSize() * other->getSize()){
+        hits--;
+        return 10.0f;// Damage for now, eventualy should be struct of effects?
+    }
+    return 0.0f;
+}
+
+
 
 float Projectile::getLife()
 {
@@ -264,15 +317,12 @@ void Projectile::render(){
 
     olc::vf2d proLoc = rotatePt(olc::vf2d( shape*0.5, entSize*0.5),direction.norm());
 
-    srpg_data::viewer->DrawRotatedDecal(proLoc,image,rad);
-
-
+    srpg_data::viewer->DrawRotatedDecal(proLoc,image.get(),rad);
 }
 
-void Projectile::makeRender(olc::Sprite* tSprite,olc::vf2d area,olc::PixelGameEngine* game){
-    game->SetDrawTarget(tSprite);
+void Projectile::makeRender(std::shared_ptr<olc::Sprite> tSprite,olc::vf2d area,olc::PixelGameEngine* game){
+    game->SetDrawTarget(tSprite.get());
     game->Clear(olc::BLANK);
-
 
     // Set up Tips of Triangle
     olc::vf2d tip =   {area.x * 0.5f,0.0f};
@@ -294,15 +344,19 @@ Decoration::Decoration( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
     lineColour = olc::DARK_GREEN;
 }
 Decoration::~Decoration(){};
+
+bool Decoration::whatIsLife(){return true;}
+
 Entity::TYPE Decoration::whoAreYou(){ return DECORATION;}
 
 void Decoration::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl,image);
+    srpg_data::viewer->DrawDecal(getBoxCollider().tl,image.get());
 
 }
 
 void Decoration::update(float fElapsedTime, olc::vf2d worldMove){
     movement(worldMove);
 }
+
 
 
