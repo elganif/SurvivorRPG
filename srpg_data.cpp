@@ -4,20 +4,22 @@
 #include "Entities.h"
 #include "srpg_data.h"
 
+const bool srpg_data::debugTools = false; /// Set false to skip debug
 
-//class QuadTree
-int QuadTree::depthLimit = 4;
+///class QuadTree
+int QuadTree::depthLimit = 6; /// static depth limit.
+
+/// Internally used contsructor that uses a passed rectangle instead of corner coordinates.
+QuadTree::QuadTree(Rectangle newArea, int newDepth,QuadTree* parent)
+    :quadArea(newArea),depth(newDepth),parentNode(parent)
+{}
 
 /// Genereal constructor for external calls
 QuadTree::QuadTree(olc::vf2d newtl, olc::vf2d newbr, int newdepth)
     :quadArea({newtl,newbr}),depth(newdepth),parentNode(nullptr)
 {}
 
-/// Internally used contsructor that uses a passed rectangle instead of corner coordinates.
-QuadTree::QuadTree(Rectangle newArea, int newdepth,QuadTree* parent)
-    :quadArea(newArea),depth(newdepth),parentNode(parent)
-{}
-
+/// Deconstruct, cleaning up lists and subquads.
 QuadTree::~QuadTree(){
     // to ensure shared pointers and memory are cleaned up properly delete each sub quad and then clear the local list
     for(int i = 0; i < 4; i++){
@@ -28,6 +30,8 @@ QuadTree::~QuadTree(){
     }
 };
 
+/// Standard item insertion. calls method on inserted item to give it node and list info for validation later.
+/// (I would like to find a simple way to accomplish the same effect that would allow a template design instead of specialized.)
 void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
      // Check if it belongs lower in the tree
      for(int i = 0;i < 4;i++){
@@ -39,7 +43,8 @@ void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
             return;
         }
     } // else we store it in this element
-    entStored.push_back(newEnt);
+    entStored.push_front(newEnt);
+    newEnt->setTreeLocation(this,entStored.begin());
 
     return;
 }
@@ -61,81 +66,103 @@ void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>
     return;
 }
 
-/// sequentialy and recursively checks every item to ensure it is moved to correct node if needed
-/// - inefficent as many stationary items are checked each frame also leads to potential misses
-/// if an entity moves to overlap a neighboring quad it wont be checked from.
-/// To fix these issues this may be redesigned to be called by entities each time they move instead
-/// of at end of frame.
-void QuadTree::validateLocations(){
-    std::list<std::shared_ptr<Entity>> riders;
-    for(auto it = entStored.begin(); it != entStored.end(); ){ //no incrementor, all paths will increment
-        if(!(*it)->isAlive()){
-            entStored.erase(it++);
-            continue;
-        }
-        if (depth != 0 && !quadArea.contains((*it)->getBoxCollider())){
-            // not at root and item does not fit. Send it up
-            riders.push_back((*it));
-            entStored.erase(it++);
-            continue;
-        }
-        int targetQuad = -1;
-        if(depth < depthLimit){
-            for(int i = 0; i < 4; i++)
-                if(childArea[i].contains((*it)->getBoxCollider()))
-                    targetQuad = i;
-        }
-        if(targetQuad == -1){ // negitive 1 means item should remain at this level, move on
-            it++;
-            continue;
-        } //else targetQuad contains the quad index to send this item
-        if(!quads[targetQuad]){ //depth already checked
-            quads[targetQuad] = new QuadTree(childArea[targetQuad],depth+1,this);
-        }
-        quads[targetQuad]->insertItem((*it));
-        entStored.erase(it++);
-    }
+
+/// Position validation that is called directly by entities each time one moves.
+/// Treenode and entIT Values are to be updated be elevator functions once entity
+/// is placed in new node.
+void QuadTree::validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+    /// First record a stable copy of the iterator because once the entity is moved the entIT will already be updated on the return trip
+    std::list<std::shared_ptr<Entity>>::iterator myEntIT = entIT;
+
+    if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
+
+        parentNode->upEscalator(treeNode,entIT);
+        entStored.erase(myEntIT);
+        return;
+    } // else not going up, check down
     for(int i = 0; i < 4; i++){
-        if(quads[i])
-            quads[i]->validateLocations();
-    }
-    if(riders.size() > 0)
-        parentNode->upElevator(riders);
-
-    if(depth == 0){ // Only once root is fully finished and all items are in proper place
-        prune();
-    }
+        if(depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+            if(!quads[i]){
+                quads[i] = new QuadTree(childArea[i],depth + 1,this);
+            }
+            quads[i]->downEscalator(treeNode,entIT);
+            entStored.erase(myEntIT);
+            return;
+        }
+    } // else: not down either so nothing to do.
+    return;
 }
-void QuadTree::upElevator(std::list<std::shared_ptr<Entity>> &riders){
-    for(auto it = riders.begin();it != riders.end(); ){
-        if(depth == 0 || quadArea.contains((*it)->getBoxCollider())){
-            insertItem((*it));
-            riders.erase(it++);
-            continue;
-        } //else
-        it++;
-    }
-    if(riders.size() > 0)
-        parentNode->upElevator(riders);
+/// Passes units up the tree during the validation process. Updates treeNode and entIT
+void QuadTree::upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+    if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
+        parentNode->upEscalator(treeNode,entIT);
+        return;
+    } //else we check sub quads
+    for(int i = 0; i < 4; i++){
+        if(depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+            if(!quads[i]){
+                quads[i] = new QuadTree(childArea[i],depth + 1,this);
+            }
+            quads[i]->downEscalator(treeNode,entIT);
+            return;
+        }
+    } // else : we know it is not going up, but does not fit in a sub quad
+    entStored.push_front(std::move(*entIT));
+    treeNode = this;
+    entIT = entStored.begin();
+    return;
+}
+/// passes units down the tree during validation. Updates treeNode and entIT
+void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+    for(int i = 0; i < 4; i++){
+        if( depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+            if(!quads[i]){
+                quads[i] = new QuadTree(childArea[i],depth + 1,this);
+            }
+            quads[i]->downEscalator(treeNode,entIT);
+            return;
+        }
+    } // else : we know its not going up, but does not fit in a sub quad
+    entStored.push_front(std::move(*entIT));
+    treeNode = this;
+    entIT = entStored.begin();
+    return;
 }
 
-/// Checks if each node is empty and deletes, if not recurses through undeleted nodes.
-void QuadTree::prune(){
+/// Cleans up the tree by recursively removing any Entities that are nolonger needed and removing any empty quads
+void QuadTree::clean(){
+//    for(auto ent = entStored.begin(); ent != entStored.end(); ){
+//        if(!(*ent)->isValid()){
+//            //entStored.erase(ent++);
+//        } else {
+//            ent++;
+//        }
+//    }
     for(int i = 0; i < 4; i++){
         if(quads[i]){
+            quads[i]->clean();
             if(quads[i]->size() == 0){
                 delete quads[i];
                 quads[i] = nullptr;
-            } else {
-                quads[i]->prune();
             }
         }
     }
+
 }
 
-/// Count of all items in this node and each sub node
+void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+    if(entIT != entStored.end()){
+        entStored.erase(entIT);
+        entIT = entStored.end();
+        treeNode = nullptr;
+    }
+    return;
+}
+
+/// NOTE: I would like to find a good way to do these functions without full tree traversal
+/// Count of all items in this node and each sub node.
 int QuadTree::size()
-{
+{   return 0;
     int thisCount = entStored.size();
     for(int i = 0;i < 4;i++){
         thisCount += quads[i] ? quads[i]->size() : 0;
@@ -145,7 +172,7 @@ int QuadTree::size()
 }
 
 /// Counts total number of nodes in the tree.
-int QuadTree::activity(){
+int QuadTree::activity(){return 0;
     int numQuads = 1;
     for(int i = 0; i < 4; i++){
         numQuads += quads[i] ? quads[i]->activity() : 0;
@@ -154,28 +181,31 @@ int QuadTree::activity(){
 }
 
 /// Checks for the deepest node
-int QuadTree::curDepth(){
+int QuadTree::curDepth(){return 0;
     int depthCharge = depth;
     for (int i = 0; i < 4; i++){
         if(quads[i]){
-            if(quads[i]->curDepth() > depthCharge)
-                depthCharge = quads[i]->curDepth();
+            int depthcheck = quads[i]->curDepth();
+            if(depthcheck > depthCharge)
+                depthCharge = depthcheck;
         }
     }
     return depthCharge;
 }
 
-/// Debug function to draw all nodes to the screen.
-void QuadTree::drawTree(olc::Pixel item,olc::Pixel noItem ){
-    if(entStored.size() > 0){
-        srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,item);
-    } else {
-        srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,noItem);
-    }
+/// Debug function to draw all nodes in an area to the screen.
+void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
+    if(quadArea.overlaps(area)){
+        if(entStored.size() > 0){
+            srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,item);
+        } else {
+            srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,noItem);
+        }
 
-    for(int i = 0;i < 4; i++){
-        if(quads[i]){
-            quads[i]->drawTree(item,noItem);
+        for(int i = 0;i < 4; i++){
+            if(quads[i] && childArea[i].overlaps(area)){
+                quads[i]->drawTree(area, item,noItem);
+            }
         }
     }
 }

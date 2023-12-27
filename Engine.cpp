@@ -5,6 +5,7 @@
 #include "srpg_data.h"
 #include "Managers.h"
 #include "Engine.h"
+#include "Menus.h"
 
 
 
@@ -13,10 +14,10 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
        srpg_data::gameObjects = std::make_unique<QuadTree>(olc::vf2d(-worldRadius,-worldRadius),olc::vf2d(worldRadius*2,worldRadius*2),0);
     }
     GameWorld::~GameWorld(){
-        delete heroicImage;
+        heroicImage.reset();
     }
     bool GameWorld::gameOver(){
-        return (mainChar != nullptr && !mainChar->isAlive());
+        return (mainChar != nullptr && !mainChar->isValid());
 
     }
 
@@ -26,18 +27,19 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
         mainChar = std::make_shared<Hero>(Hero({0,0},0.07));
 
         olc::vi2d Size = srpg_data::viewer->ScaleToScreen(mainChar->getBoxCollider().sides);
-        heroicImage = new olc::Sprite(Size.x+1,Size.y+1);
+        heroicImage = std::shared_ptr<olc::Sprite>(new olc::Sprite(Size.x+1,Size.y+1));
         mainChar->makeRender(heroicImage,Size,srpg);
         mainChar->setRender(heroicImage);
 
         srpg_data::gameObjects->insertItem((std::shared_ptr<Entity>)mainChar);
-        villians = std::make_unique<FoeManager>(worldRadius);
-        villians->initalize(250,srpg);
-        lawn =  std::make_unique<DecalManager>(worldRadius);
-        lawn->initalize(srpg);
+        villians = std::make_unique<FoeManager>(srpg,worldRadius);
+        villians->initalize(250);
+        lawn =  std::make_unique<DecalManager>(srpg,worldRadius);
+        lawn->initalize();
         running = true;
 
     }
+
     bool GameWorld::run(float fElapsedTime, srpg_data::controls& inputs){
         /// If game is not running then nothing will update
         if(!running){
@@ -55,7 +57,7 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
             srpg_data::viewer->MoveWorldOffset(misalign);
 
             olc::vf2d movement = {0,0};
-            if(mainChar->isAlive()){
+            if(mainChar->isValid()){
                 /// slide world and mainChar to keep player at center
                 movement = mainChar->getLocal() + inputs.movement;
                 mainChar->placement({0,0});
@@ -93,7 +95,7 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
 
                 while(entity != bullets.end()){
                     // check for bullet being dead, if dead erase and move on
-                    if (!(*entity)->isAlive()){
+                    if (!(*entity)->isValid()){
                         bullets.erase(entity++);
                         continue;
                     } // else entity is alive
@@ -103,7 +105,8 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
                 }
             }
 
-        srpg_data::gameObjects->validateLocations();
+        //srpg_data::gameObjects->clean();
+
         if (ticks == maxTicks){ // if game is rendering too slow dont store extra game engine time.
                 engineTime = 0.0f;
         }
@@ -125,12 +128,44 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
         for(auto it = renderables.begin();it!= renderables.end();it++){
             (*it)->render();
         }
-        srpg->DrawString({200,100},"items on screen:" + std::to_string(renderables.size()),olc::BLUE);
+        if(srpg_data::debugTools){
+
+            srpg_data::gameObjects->drawTree(screen, olc::YELLOW,olc::VERY_DARK_CYAN);
+            srpg->DrawString({200,100},"items on screen:" + std::to_string(renderables.size()),olc::BLUE);
+        }
         srpg->SetDrawTarget(nullptr);
 
     }
     void GameWorld::pause(){
 
     }
+    void GameWorld::gameHudDraw(srpg_data::controls& inputs){
+        //prepare areas for Side bar UI interface
+        srpg->SetDrawTarget(srpg_data::renderLayerUI);
+        //Clear(olc::BLANK);
+        int uiWidth = (srpg->ScreenWidth() - srpg->ScreenHeight())/2;
+
+        srpg->FillRect(0, 0, uiWidth, srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
+        srpg->FillRect(srpg->ScreenWidth() - uiWidth, 0, srpg->ScreenHeight(), srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
+
+        if(srpg_data::debugTools){
+
+            //Debug data code
+            srpg->DrawString({50,80},"tot Quads:" + std::to_string(srpg_data::gameObjects->activity()),olc::BLUE);
+            srpg->DrawString({50,90},"quad depth:" + std::to_string(srpg_data::gameObjects->curDepth()),olc::BLUE);
+        }
+        //crosshair for targeting - TODO: figure out where this code actually fits. Design proper crosshairs?
+        srpg->SetDrawTarget(nullptr);
+        srpg->Clear(olc::BLANK);
+        srpg_data::viewer->DrawLine( inputs.target.x+0.01,inputs.target.y,inputs.target.x-0.01,inputs.target.y,olc::DARK_MAGENTA);
+        srpg_data::viewer->DrawLine( inputs.target.x,inputs.target.y+0.01,inputs.target.x,inputs.target.y-0.01,olc::DARK_MAGENTA);
+
+
+    }
+    void GameWorld::gameHudGenerate(){
+
+    }
+
+
 
 
