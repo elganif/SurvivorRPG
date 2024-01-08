@@ -12,25 +12,25 @@
 
 /// class Manager
 template <class E>
-Manager<E>::Manager(olc::PixelGameEngine* game, float world) : srpg(game),worldRadius(world) {};
+Manager<E>::Manager(olc::PixelGameEngine* game, float world) : srpg(game),worldRadius(world) {}
 
 template <class E>
 Manager<E>::~Manager() {
     drawing.reset();
     image.reset();
-};
+}
 
 template <class E>
 int Manager<E>::size(){
     return items.size();
 }
 template <class E>
-int Manager<E>::updateAndClear(float fElapsedTime,olc::vf2d movement){
+int Manager<E>::updateAndClear(float fElapsedTime){
     int removed = 0;
     for( auto ent = items.begin(); ent != items.end(); ) /// no iterator due to erase call - all paths must increment.
     {
         if((*ent)->isValid()){
-            (*ent)->update(fElapsedTime,movement);
+            (*ent)->update(fElapsedTime);
             ent++;
             continue;
         } // else ent is not alive and can be removed
@@ -39,6 +39,13 @@ int Manager<E>::updateAndClear(float fElapsedTime,olc::vf2d movement){
         removed++;
     }
     return removed;
+}
+
+template <class E>
+void Manager<E>::eofUpdate(float fElapsedTime, olc::vf2d movement){
+    for( auto ent = items.begin(); ent != items.end();ent++ ){
+        (*ent)->eofUpdate(fElapsedTime,movement);
+    }
 }
 
 /// Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
@@ -115,27 +122,33 @@ void FoeManager::makeRender(){
     srpg->SetDrawTarget(nullptr);;
 }
 
-void FoeManager::update(float fElapsedTime,olc::vf2d movement){
+void FoeManager::update(float fElapsedTime){
 
-    deadFoes += updateAndClear(fElapsedTime,movement);
+    deadFoes += updateAndClear(fElapsedTime);
 
-
-    /// after updates and removal check collisions. 2 passes
-    for(int i = 0; i < 2; i++){
-        for( auto V = items.begin(); V!=items.end();V++ ){
-            std::list<std::shared_ptr<Entity>> impacts;
-            srpg_data::gameObjects->getOverlapItems((*V)->getBoxCollider(),impacts);
-            for(auto t = impacts.begin();t != impacts.end();t++){
-                if( (*V) != (*t))
-                    (*V)->onOverlap((*t)) ;
-            }
+    /// after updates and removal check collisions.
+    for( auto V = items.begin(); V!=items.end();V++ ){
+        if((*V)->getLocal().mag() > worldRadius){
+            (*V)->movement((*V)->getLocal().norm() * worldRadius * -2);
         }
+        std::list<std::shared_ptr<Entity>> impacts;
+        srpg_data::gameObjects->getOverlapItems((*V)->getBoxCollider(),impacts);
+        for(auto t = impacts.begin();t != impacts.end();t++){
+            if( (*V) != (*t))
+                (*V)->onOverlap((*t)) ;
+        }
+
     }
+
     /// On each frame that enemies are below desired population add one more.
     if(items.size() < maxPop){
         spawn(foeSize);
     }
     items.sort();
+}
+
+void FoeManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
+    Manager<Foe>::eofUpdate(fElapsedTime, movement);
 }
 
 int FoeManager::getKills(){return deadFoes;}
@@ -149,16 +162,47 @@ ProjectileManager::~ProjectileManager(){
 }
 
 //void initalize(int numFoes);
-void ProjectileManager::spawn(float bulletSize){
-
+void ProjectileManager::spawn(olc::vf2d origin, olc::vf2d momentum, olc::vf2d bulletSize){
+    std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(origin,bulletSize,2.0f,momentum,1,srpg);
+    temp->setSharedDecal(drawing);
+    items.push_front(temp);
+    srpg_data::gameObjects->insertItem(temp);
 }
 
-void ProjectileManager::update(float fElapsedTime,olc::vf2d movement){
-
+void ProjectileManager::update(float fElapsedTime){
+    updateAndClear(fElapsedTime);
+    while(items.size() > 5000){
+        items.back()->kill();
+        items.back()->isValid();
+        items.pop_back();
+    }
 }
 
-void ProjectileManager::makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::PixelGameEngine* game){
+void ProjectileManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
+    Manager<Projectile>::eofUpdate(fElapsedTime, movement);
+}
 
+void ProjectileManager::makeRender(olc::vf2d pSize){
+    /// prepare the sprite object for drawing
+    olc::vi2d area = srpg_data::viewer->ScaleToScreen({pSize.x,pSize.y}) ;
+    image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
+
+    srpg->SetDrawTarget(image.get());
+    srpg->Clear(olc::BLANK);
+
+    // Set up Tips of Triangle
+    olc::vi2d tip =   {area.x / 2,0};
+    olc::vi2d left =  {0,area.y};
+    olc::vi2d right = {area.x,area.y};
+
+    olc::Pixel fColour = olc::Pixel(0,0,0);
+    olc::Pixel lineColour = olc::Pixel(128,0,63); /// temp until I figure out where these should live and how they get here
+    srpg->FillTriangle(tip,left,right,fColour);
+    srpg->DrawTriangle(tip,left,right,lineColour);
+
+    /// Set decal and return draw target to default
+    drawing = std::make_shared<olc::Decal>(image.get());
+    srpg->SetDrawTarget(nullptr);
 }
 
 
@@ -209,9 +253,9 @@ void DecalManager::initalize(){
     }
 }
 
-void DecalManager::update(float fElapsedTime,olc::vf2d movement){
+void DecalManager::update(float fElapsedTime){
     for(auto it = items.begin() ; it != items.end() ; it++ ){
-        (*it)->update(fElapsedTime,movement);
+        (*it)->update(fElapsedTime);
 
         if((*it)->getLocal().x > worldRadius)
             (*it)->movement({-worldRadius * 2,0});
@@ -226,6 +270,11 @@ void DecalManager::update(float fElapsedTime,olc::vf2d movement){
             (*it)->movement({0, worldRadius * 2});
     }
 }
+
+void DecalManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
+    Manager<Decoration>::eofUpdate(fElapsedTime, movement);
+}
+
 void DecalManager::makeRender(){
 
 

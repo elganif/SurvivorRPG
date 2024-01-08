@@ -24,7 +24,7 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
     void GameWorld::start(){
         if(running){return;}// guard against calls to start() while game is already initialized
 
-        mainChar = std::make_shared<Hero>(Hero({0,0},0.07));
+        mainChar = std::make_shared<Hero>(olc::vf2d(0,0),0.07,srpg,worldRadius);
 
         olc::vi2d Size = srpg_data::viewer->ScaleToScreen(mainChar->getBoxCollider().sides);
         heroicImage = std::shared_ptr<olc::Sprite>(new olc::Sprite(Size.x+1,Size.y+1));
@@ -36,6 +36,8 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
         villians->initalize(250);
         lawn =  std::make_unique<DecalManager>(srpg,worldRadius);
         lawn->initalize();
+
+        gameHudGenerate();
         running = true;
 
     }
@@ -43,74 +45,60 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
     bool GameWorld::run(float fElapsedTime, srpg_data::controls& inputs){
         /// If game is not running then nothing will update
         if(!running){
-            return running;
+            return false;
         }
-
         engineTime += fElapsedTime;
         int ticks = 0;
-        while ( engineTime >= tickSize && ticks <= maxTicks){
+        if ( engineTime >= tickSize && ticks <= maxTicks){
                 engineTime -= tickSize;   ticks++;
 
+            worldTime += tickSize;
             /// Move camera gradualy toward Center of world
+            olc::vf2d tc = -(srpg_data::viewer->GetWorldScale() / 2);
             olc::vf2d one = {(float)srpg->ScreenWidth()/(float)srpg->ScreenHeight(),1.0};
             olc::vf2d misalign = (srpg_data::viewer->GetWorldOffset() + one) * tickSize * -10;
             srpg_data::viewer->MoveWorldOffset(misalign);
 
-            olc::vf2d movement = {0,0};
+            olc::vf2d worldMove = {0,0};
             if(mainChar->isValid()){
                 /// slide world and mainChar to keep player at center
-                movement = mainChar->getLocal() + inputs.movement;
+                worldMove = -mainChar->getLocal();
                 mainChar->placement({0,0});
 
             /// move world objects
-                movement *= tickSize;
-                srpg_data::viewer->MoveWorldOffset(movement);
+                //worldMove *= tickSize;
+                srpg_data::viewer->MoveWorldOffset(worldMove);
 
             /// update entity management containers
 
-                mainChar->update(tickSize,movement);
-
-                villians->update(tickSize,movement);
-                lawn->update(tickSize,movement);
-
-
-
-                std::shared_ptr<Projectile> temp;
-                olc::vf2d target = inputs.target;
-                if(inputs.aim.mag() > 0.5f){
-                        inputs.rapidFire = true;
-                        target = inputs.aim.norm();
+                mainChar->update(tickSize,inputs);
+                std::list<std::shared_ptr<Entity>> impacts;
+                srpg_data::gameObjects->getOverlapItems(mainChar->getBoxCollider(),impacts);
+                for(auto t = impacts.begin();t != impacts.end();t++){
+                    if( mainChar != (*t))
+                        mainChar->onOverlap((*t));
                 }
-                if(inputs.mainAttack && mainChar->projectileReady()){
-                        mainChar->fireProjectile(target,bullets,srpg);
-                        inputs.mainAttack = false;
+                villians->update(tickSize);
 
-                }
-                while(inputs.rapidFire && mainChar->fireProjectile(target,bullets,srpg)){
-                     // TODO: code to update each bullet as its fired to compensate for time passing between shots within a single tick.
-                }
+                lawn->update(tickSize);
 
-                // Loop through and process all bullet objects
-                auto entity = bullets.begin();
+                mainChar->eofUpdate(tickSize,worldMove);
 
-                while(entity != bullets.end()){
-                    // check for bullet being dead, if dead erase and move on
-                    if (!(*entity)->isValid()){
-                        bullets.erase(entity++);
-                        continue;
-                    } // else entity is alive
-                    // call the tick update on each bullet
-                    (*entity)->update(tickSize,movement);
-                    entity++;
-                }
+                villians->eofUpdate(tickSize,worldMove);
+
+                lawn->eofUpdate(tickSize,worldMove);
+
+
             }
 
         //srpg_data::gameObjects->clean();
 
-        if (ticks == maxTicks){ // if game is rendering too slow dont store extra game engine time.
-                engineTime = 0.0f;
-        }
-
+        //if (engineTime > tickSize * 5){ // if game is rendering too slow skip ticks
+            while (engineTime > tickSize){
+                engineTime -= tickSize;
+            }
+        //}
+        srpg_data::gameObjects->clean();
         }
         return running;
     }
@@ -139,14 +127,22 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
     void GameWorld::pause(){
 
     }
+
+    std::unique_ptr<Panel> leftHUD;
+    std::unique_ptr<Panel> rightHUD;
     void GameWorld::gameHudDraw(srpg_data::controls& inputs){
         //prepare areas for Side bar UI interface
         srpg->SetDrawTarget(srpg_data::renderLayerUI);
-        //Clear(olc::BLANK);
-        int uiWidth = (srpg->ScreenWidth() - srpg->ScreenHeight())/2;
 
-        srpg->FillRect(0, 0, uiWidth, srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
-        srpg->FillRect(srpg->ScreenWidth() - uiWidth, 0, srpg->ScreenHeight(), srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
+        int uiWidth = (srpg->ScreenWidth() - srpg->ScreenHeight())/2;
+        leftHUD->render(inputs);
+        rightHUD->render(inputs);
+        //srpg->FillRect(0, 0, uiWidth, srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
+        //srpg->FillRect(srpg->ScreenWidth() - uiWidth, 0, srpg->ScreenHeight(), srpg->ScreenHeight(), olc::VERY_DARK_BLUE);
+
+        std::string timer = worldTime.print();
+        olc::vi2d clockpos = {(uiWidth/2) - ((int)timer.length()*4), 8};
+        srpg->DrawString(clockpos,timer);
 
         if(srpg_data::debugTools){
 
@@ -162,8 +158,22 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
 
 
     }
-    void GameWorld::gameHudGenerate(){
 
+    void GameWorld::gameHudGenerate(){
+        int uiWidth = (srpg->ScreenWidth() - srpg->ScreenHeight())/2;
+        int uiHeight = (srpg->ScreenHeight());
+
+        leftHUD = std::make_unique<Panel>(srpg,olc::vi2d(0,0),olc::vi2d(uiWidth,uiHeight));
+
+
+
+
+
+        rightHUD = std::make_unique<Panel>(srpg,olc::vi2d(srpg->ScreenWidth() - uiWidth,0),olc::vi2d(uiWidth,uiHeight));
+
+
+
+        srpg->SetDrawTarget(nullptr);
     }
 
 

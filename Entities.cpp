@@ -4,26 +4,41 @@
 #include "olcPGEX_TransformedView.h"
 #include "Rectangle.h"
 #include "srpg_data.h"
+#include "Managers.h"
 #include "Entities.h"
 
 /// class Entity
 /// Base object of all items in the world.
 
-/// Declaration of static uuid variable. Used in generation of a unique interger for each entity created.
-int Entity::uuid;
+/// Declaration of static uuid variable. Used in generation of a unique identifier for each entity created.
+std::atomic_uint32_t Entity::uuid;
 
 Entity::Entity(olc::vf2d spawn, float newSize):location(spawn),entSize(newSize),entID(uuid++){}
 
 void Entity::placement(olc::vf2d destiny){
     location = destiny;
-    if(hostTreeNode)
+    if(hostTreeNode){
         hostTreeNode->validateEnt(hostTreeNode,myself);
-
+    }
 }
+
+void Entity::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
+    float friction = 0.75;
+
+    olc::vf2d totalDist = walkingDirection + momentum;
+    if(totalDist.mag2() > 1.0f){
+    // Set max speed limit currently half a screen per second.
+        totalDist = totalDist.norm();
+    }
+    momentum -= momentum * fElapsedTime;
+    momentum += totalDist * fElapsedTime;
+    momentum *= friction;
+    movement((totalDist * fElapsedTime) + worldMove);
+    walkingDirection = {0,0};
+}
+
 void Entity::movement(olc::vf2d destiny){
-    location += destiny;
-    if(hostTreeNode)
-        hostTreeNode->validateEnt(hostTreeNode,myself);
+    placement(location + destiny);
 }
 
 /// Used to create entity decal out of sprite passed in
@@ -40,7 +55,7 @@ void Entity::setSharedDecal(std::shared_ptr<olc::Decal> tDecal){
 bool Entity::isValid(){
     if(whatIsLife()){
         return true;
-    } /// Else entity is dead
+    } /// Else entity is dead, check if it is still in quadTree and remove if necessary.
     if (hostTreeNode){
         hostTreeNode->removeMe(hostTreeNode,myself);
     }
@@ -51,6 +66,7 @@ bool Entity::isValid(){
 bool Entity::operator == (const Entity& other) const{
     return entID == other.entID;
 }
+
 bool Entity::operator != (const Entity& other) const{
     return !( *this == other);
 }
@@ -85,10 +101,13 @@ olc::vf2d Entity::rotatePt(olc::vf2d point,olc::vf2d angle){
 
 /// class Hero : public Entity
 
-Hero::Hero( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
-
+Hero::Hero( olc::vf2d spawn, float newSize,olc::PixelGameEngine* game, float world):Entity(spawn,newSize){
+    speed = 0.5f;
     fColour = olc::BLACK;
     lineColour = olc::BLUE;
+    projectileCooldown = 0;
+    bulletMan = std::make_unique<ProjectileManager>(game,world);
+    bulletMan->makeRender(pSize);
 
 }
 Hero::~Hero(){};
@@ -101,42 +120,75 @@ float Hero::getHP(){
     return HP;
 }
 
-void Hero::update(float fElapsedTime, olc::vf2d worldMove){
-    projectileCooldown = projectileCooldown >= 0 ? fElapsedTime :  projectileCooldown + fElapsedTime;
+void Hero::update(float fElapsedTime, srpg_data::controls& inputs){
+    bulletMan->update(fElapsedTime);
+
+    walkingDirection = inputs.movement;
+
+    projectileCooldown += fElapsedTime;
+
+    if(projectileCooldown >= fElapsedTime){
+        projectileCooldown = fElapsedTime;
+    }
+    while( projectileCooldown >= 0){
+        projectileCooldown -= 1/fireRate;
+        std::list<std::shared_ptr<Entity>> targets;
+        srpg_data::gameObjects->getFoes(getLocal(),5,fireCount,QuadTree::WEAK ,targets);
+        for(auto ent = targets.begin(); ent != targets.end(); ent++){
+            fireProjectile((*ent)->getLocal());
+        }
+    }
 }
 
-bool Hero::fireProjectile(olc::vf2d& target, std::list<std::shared_ptr<Projectile>>& bullets, olc::PixelGameEngine* game){
-    if(projectileReady()){
-        std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(getLocal(),0.05f,0.025f,((float)rand() / (float)RAND_MAX) * 100.0f,target,1,game);
-        projectileCooldown -= 1.0/fireRate;
-        bullets.push_back(temp);
-        srpg_data::gameObjects->insertItem(temp);
+void Hero::update(float fElapsedTime){
+}
+
+void Hero::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
+    Entity::eofUpdate(fElapsedTime,{0,0});
+    bulletMan->eofUpdate(fElapsedTime,worldMove);
+}
+
+bool Hero::fireProjectile(const olc::vf2d& target){
+
+        bulletMan->spawn(getLocal(),target,pSize);
 
         return true;
-    }
-    return false;
-
 }
 
 bool Hero::projectileReady(){
     return projectileCooldown >= 0;
 }
 
-olc::vf2d Hero::bump(olc::vf2d otherLoc,float otherSize){
+void Hero::onOverlap(std::shared_ptr<Entity> other){
+    if(*this == *other)
+        return;
+    if(other->whoAreYou() == HERO){
+        //Collide with Hero
+        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
+    }
+    if(other->whoAreYou() == FOE){
+        //Collide with Friendly
+        std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize);
+    }
+    if(other->whoAreYou() == PROJECTILE){
+        // subtract projectiles damage from hp
+        //HP = HP - std::dynamic_pointer_cast<Projectile>(other)->impact(this);
+    }
+}
 
-    olc::vf2d entRelLoc = (otherLoc - getLocal()); // magnitude of distance
+void Hero::bump(olc::vf2d otherLoc,float otherSize){
+
+    olc::vf2d entRelLoc = (getLocal() - otherLoc); // magnitude of distance
     float colideDist = (otherSize + entSize);
     if(colideDist * colideDist > entRelLoc.mag2()){
         float overLap = colideDist - entRelLoc.mag();
 
-        olc::vf2d thisMove = entRelLoc.norm()*overLap*0.5f;
+        float force = ((overLap * overLap) / entSize) *15;
+        momentum += entRelLoc.norm()*force*0.4f;
 
         HP = HP - ( 1.0f/60.0f ); // KINDA BAD HACK: TODO Build proper enemy attack function - for now remove hp equivelent to time tick
-        movement(-thisMove*0.8);
-        return (thisMove*1.2);
 
-    } // else not collideing, return 0
-    return{0,0};
+    }
 }
 
 
@@ -144,9 +196,10 @@ void Hero::render(){
     srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
 
     srpg_data::viewer->FillRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
-    getBoxCollider().sides.x*(HP/MaxHP),0.2f*entSize,olc::GREEN);
+                                getBoxCollider().sides.x*(HP/MaxHP),0.2f*entSize,olc::GREEN);
+
     srpg_data::viewer->DrawRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
-    getBoxCollider().sides.x,0.2f*entSize,olc::DARK_GREY);
+                                getBoxCollider().sides.x,0.2f*entSize,olc::DARK_GREY);
 
     //collider Debug
     if(srpg_data::debugTools){
@@ -189,7 +242,7 @@ void Hero::makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::Pi
 /// class Foe : public Entity
 
 Foe::Foe( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
-    speed = 0.2f;
+    speed = 0.15f;
     fColour = olc::BLACK;
     lineColour = olc::DARK_RED;
 }
@@ -202,11 +255,10 @@ float Foe::getHP(){
     return HP;
 }
 
-void Foe::update(float fElapsedTime, olc::vf2d worldMove){
+void Foe::update(float fElapsedTime){
     if (isValid()) {
-        movement(-getLocal().norm() * speed * fElapsedTime);
+        walkingDirection = -getLocal().norm() * speed;
     }
-    movement( worldMove);
 }
 
 bool Foe::whatIsLife(){
@@ -214,14 +266,15 @@ bool Foe::whatIsLife(){
 }
 
 void Foe::onOverlap(std::shared_ptr<Entity> other){
-
+    if(*this == *other)
+        return;
     if(other->whoAreYou() == HERO){
         //Collide with Hero
-            movement(std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize));
+        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
     }
     if(other->whoAreYou() == FOE){
         //Collide with Friendly
-        movement(std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize));
+        std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize);
     }
     if(other->whoAreYou() == PROJECTILE){
         // subtract projectiles damage from hp
@@ -229,19 +282,18 @@ void Foe::onOverlap(std::shared_ptr<Entity> other){
     }
 }
 
-olc::vf2d Foe::bump(olc::vf2d otherLoc,float otherSize){
+void Foe::bump(olc::vf2d otherLoc,float otherSize){
 
-    olc::vf2d entRelLoc = (otherLoc - getLocal()); // magnitude of distance
+    olc::vf2d entRelLoc = (getLocal() - otherLoc); // magnitude of distance
     float colideDist = (otherSize + entSize);
     if(colideDist * colideDist > entRelLoc.mag2()){
         float overLap = colideDist - entRelLoc.mag();
 
-        olc::vf2d thisMove = entRelLoc.norm()*overLap*0.5f;
-        movement(-thisMove);
-        return thisMove;
+        float force = ((overLap * overLap) / entSize)*10;
+        momentum += entRelLoc.norm()*force;
 
-    } // else not actually collideing, return 0
-    return {0.0f,0.0f};
+    }
+
 }
 
 void Foe::render(){
@@ -252,36 +304,28 @@ void Foe::render(){
         srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_RED);
     }
 }
-//bool Foe::operator == (const Entity& other) const{
-//    return entID == other.entID;
-//}
-bool Foe::operator < (const Foe& other)
-{
-return (HP < other.HP );
-}
-/// class Projectile : public Entity
-Projectile::Projectile( olc::vf2d spawn, float newSize, float width, float duration,
-                        olc::vf2d orientation,int hitCount, olc::PixelGameEngine* game)
-                    :Entity(spawn,newSize),shape(width),lifespan(duration),direction(orientation),hits(hitCount)
-{
-        lineColour = olc::DARK_RED;
-        fColour = olc::DARK_GREY;
 
-        olc::vi2d Size = srpg_data::viewer->ScaleToScreen({shape,entSize});
-        sprite = std::make_shared<olc::Sprite>(Size.x+1,Size.y+1);
-        Projectile::makeRender(sprite,Size,game);
-        setRender(sprite);
+
+bool Foe::operator < (const Foe& other) const
+{
+    return (HP < other.HP );
+}
+
+/// class Projectile : public Entity
+Projectile::Projectile( olc::vf2d spawn, olc::vf2d projSize, float duration,
+                        olc::vf2d orientation,int hitCount, olc::PixelGameEngine* game)
+                    :Entity(spawn,projSize.x),shape(projSize.y),lifespan(duration),direction(orientation),hits(hitCount)
+{
+    lineColour = olc::DARK_RED;
+    fColour = olc::DARK_GREY;
 }
 
 Projectile::~Projectile(){}
 
-void Projectile::update(float fElapsedTime, olc::vf2d worldMove){
+void Projectile::update(float fElapsedTime){
     if (isValid()) {
-        movement( (direction * fElapsedTime) + worldMove);
-        lifespan -= fElapsedTime;
-
+        walkingDirection = direction;
     }
-
 }
 
 bool Projectile::whatIsLife()
@@ -315,27 +359,10 @@ void Projectile::render(){
 
     float rad = atan2(direction.x, -direction.y);
 
-    olc::vf2d proLoc = rotatePt(olc::vf2d( shape*0.5, entSize*0.5),direction.norm());
+    olc::vf2d proLoc = rotatePt(olc::vf2d( entSize*0.5, entSize*0.5),direction.norm());
 
     srpg_data::viewer->DrawRotatedDecal(proLoc,image.get(),rad);
 }
-
-void Projectile::makeRender(std::shared_ptr<olc::Sprite> tSprite,olc::vf2d area,olc::PixelGameEngine* game){
-    game->SetDrawTarget(tSprite.get());
-    game->Clear(olc::BLANK);
-
-    // Set up Tips of Triangle
-    olc::vf2d tip =   {area.x * 0.5f,0.0f};
-    olc::vf2d left =  {0.0,area.y};
-    olc::vf2d right = {area.x,area.y};
-    game->FillTriangle(tip,left,right,fColour);
-    game->DrawTriangle(tip,left,right,lineColour );
-
-    game->SetDrawTarget(nullptr);
-}
-
-
-
 
 
 /// class Decoration : public Entity
@@ -354,8 +381,7 @@ void Decoration::render(){
 
 }
 
-void Decoration::update(float fElapsedTime, olc::vf2d worldMove){
-    movement(worldMove);
+void Decoration::update(float fElapsedTime){
 }
 
 

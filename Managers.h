@@ -18,19 +18,21 @@ protected:
     float worldRadius;
 
     std::list<std::shared_ptr<E>> items;
-    std::shared_ptr<olc::Sprite> image;
-    std::shared_ptr<olc::Decal> drawing;
+    std::shared_ptr<olc::Sprite> image = nullptr;
+    std::shared_ptr<olc::Decal> drawing = nullptr;
 
     Manager<E>(olc::PixelGameEngine* srpg, float worldRadius);
     ~Manager<E>();
     int size();
-    int updateAndClear(float fElapsedTime,olc::vf2d movement);
+    int updateAndClear(float fElapsedTime);
     void spawn();
+    public:
+    void eofUpdate(float fElapsedTime,olc::vf2d movement);
 
 };
 
 ///Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
-class FoeManager : Manager<Foe>{
+class FoeManager : public Manager<Foe>{
     private:
     int maxPop;
     float foeSize = 0.05f;
@@ -43,7 +45,8 @@ class FoeManager : Manager<Foe>{
     int getKills();
 
     void spawn(float foeSize);
-    void update(float fElapsedTime,olc::vf2d movement);
+    void update(float fElapsedTime);
+    void eofUpdate(float fElapsedTime,olc::vf2d movement);
 
     void initalize(int numFoes);
     void makeRender();
@@ -51,24 +54,21 @@ class FoeManager : Manager<Foe>{
 };
 
 /// Manages projectiles
-class ProjectileManager : Manager<Projectile>{
+class ProjectileManager : public Manager<Projectile>{
 private:
-
 public:
     ProjectileManager(olc::PixelGameEngine* srpg, float worldRadius);
     ~ProjectileManager();
-    //void initalize(int numFoes);
-    void spawn(float bulletSize);
-    void update(float fElapsedTime,olc::vf2d movement);
-    void makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::PixelGameEngine* game);
+    void spawn(olc::vf2d origin, olc::vf2d momentum, olc::vf2d bulletSize);
+    void update(float fElapsedTime);
+    void eofUpdate(float fElapsedTime,olc::vf2d movement);
 
-
-
+    void makeRender(olc::vf2d pSize);
 };
 
 
 /// A manager for all things part of the enviroment. Grass, trees(eventually) or possibly buildings
-class DecalManager : Manager<Decoration> {
+class DecalManager : public Manager<Decoration> {
 private:
     float grassSize = 0.01f;
     olc::Pixel grassColour = olc::DARK_GREEN;
@@ -77,7 +77,9 @@ public:
     ~DecalManager();
 
     void initalize();
-    void update(float fElapsedTime,olc::vf2d movement);
+    void update(float fElapsedTime);
+    void eofUpdate(float fElapsedTime,olc::vf2d movement);
+
     void makeRender();
 };
 

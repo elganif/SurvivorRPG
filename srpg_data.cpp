@@ -4,7 +4,7 @@
 #include "Entities.h"
 #include "srpg_data.h"
 
-const bool srpg_data::debugTools = false; /// Set false to skip debug
+const bool srpg_data::debugTools = true; /// Set false to skip debug
 
 ///class QuadTree
 int QuadTree::depthLimit = 6; /// static depth limit.
@@ -21,12 +21,10 @@ QuadTree::QuadTree(olc::vf2d newtl, olc::vf2d newbr, int newdepth)
 
 /// Deconstruct, cleaning up lists and subquads.
 QuadTree::~QuadTree(){
-    // to ensure shared pointers and memory are cleaned up properly delete each sub quad and then clear the local list
+    // to ensure shared pointers and memory are cleaned up clear the list and delete each quad
+    entStored.clear();
     for(int i = 0; i < 4; i++){
         delete quads[i];
-    }
-    while (entStored.size() > 0 ){
-        entStored.erase(entStored.begin());
     }
 };
 
@@ -49,7 +47,7 @@ void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
     return;
 }
 
-/// Checks an area for any items in the tree that overlap however slightly.
+/// Checks an area for any items in the tree that overlap.
 void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>>& returns){
     // collect overlaps from children
     for(int i = 0;i < 4;i++){
@@ -66,6 +64,64 @@ void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>
     return;
 }
 
+/// Starting at targLoc finds up to numTarg closest targets. returns number of targets found
+int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, TARG targType, std::list<std::shared_ptr<Entity>>& returns){
+    /// logic to turn targType into a specific sorting function
+    std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targMethod;
+    switch (targType){
+        case CLOSE:
+            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+                                    {return (f->getLocal() - targetLoc).mag2() < (s->getLocal() - targetLoc).mag2(); };
+
+            break;
+        case WEAK:
+            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+                                    {return (( (Foe*)(f.get()) )->getHP() < ( (Foe*)(s.get()) )->getHP()); };
+        break;
+        case STRONG:
+            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+                                    {return (( (Foe*)(f.get()) )->getHP() > ( (Foe*)(s.get()) )->getHP()); };
+        break;
+    }
+
+    float curDist2 = range * range;
+
+    return getFoes(targetLoc,range,numTarg,targMethod,returns,curDist2 );
+}
+
+int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targType, std::list<std::shared_ptr<Entity>>& returns,float curDist2){
+    for(int i = 0;i < 4;i++){
+        if(childArea[i].contains(targetLoc) && quads[i]){
+             quads[i]->getFoes(targetLoc,range,numTarg,targType,returns,curDist2);
+        }
+    }
+      for(auto ent = entStored.begin(); ent != entStored.end(); ent++){
+        float dist2 = ((*ent)->getLocal() - targetLoc).mag2();
+//returns.size() < numTarg ||
+        if((*ent)->whoAreYou() == Entity::FOE && ( dist2 < curDist2) ){
+            returns.push_front(*ent);
+
+            returns.sort( targType);
+            auto lastInLine = returns.back();
+            curDist2 = (lastInLine->getLocal() - targetLoc).mag2();
+        }
+    }
+    for(int i = 0; i < 4; i++){
+        if(quads[i] && !childArea[i].contains(targetLoc) ){
+            olc::vf2d rectPoint = targetLoc.clamp(childArea[i].tl,childArea[i].tl + childArea[i].sides);
+            float qDist = (rectPoint - targetLoc).mag2();
+            if(qDist < curDist2){
+                quads[i]->getFoes(targetLoc,range,numTarg,targType,returns,curDist2);
+            }
+            while(returns.size() > numTarg){
+                returns.pop_back();
+            }
+        }
+    }
+
+
+    return returns.size();
+}
 
 /// Position validation that is called directly by entities each time one moves.
 /// Treenode and entIT Values are to be updated be elevator functions once entity
@@ -129,26 +185,6 @@ void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Enti
     return;
 }
 
-/// Cleans up the tree by recursively removing any Entities that are nolonger needed and removing any empty quads
-void QuadTree::clean(){
-//    for(auto ent = entStored.begin(); ent != entStored.end(); ){
-//        if(!(*ent)->isValid()){
-//            //entStored.erase(ent++);
-//        } else {
-//            ent++;
-//        }
-//    }
-    for(int i = 0; i < 4; i++){
-        if(quads[i]){
-            quads[i]->clean();
-            if(quads[i]->size() == 0){
-                delete quads[i];
-                quads[i] = nullptr;
-            }
-        }
-    }
-
-}
 
 void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
     if(entIT != entStored.end()){
@@ -159,41 +195,7 @@ void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>:
     return;
 }
 
-/// NOTE: I would like to find a good way to do these functions without full tree traversal
-/// Count of all items in this node and each sub node.
-int QuadTree::size()
-{   return 0;
-    int thisCount = entStored.size();
-    for(int i = 0;i < 4;i++){
-        thisCount += quads[i] ? quads[i]->size() : 0;
-    }
-
-    return thisCount;
-}
-
-/// Counts total number of nodes in the tree.
-int QuadTree::activity(){return 0;
-    int numQuads = 1;
-    for(int i = 0; i < 4; i++){
-        numQuads += quads[i] ? quads[i]->activity() : 0;
-    }
-    return numQuads;
-}
-
-/// Checks for the deepest node
-int QuadTree::curDepth(){return 0;
-    int depthCharge = depth;
-    for (int i = 0; i < 4; i++){
-        if(quads[i]){
-            int depthcheck = quads[i]->curDepth();
-            if(depthcheck > depthCharge)
-                depthCharge = depthcheck;
-        }
-    }
-    return depthCharge;
-}
-
-/// Debug function to draw all nodes in an area to the screen.
+/// Debug function to draw all nodes to the screen.
 void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
     if(quadArea.overlaps(area)){
         if(entStored.size() > 0){
@@ -209,6 +211,58 @@ void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
         }
     }
 }
+
+bool QuadTree::clean(){
+    bool isClean = entStored.size() == 0;
+    for(int i = 0; i < 4; i++){
+        if(quads[i]){
+            if(quads[i]->clean()){
+                delete quads[i];
+                quads[i] = nullptr;
+                continue;
+            } // else quad contains entities.
+            isClean = false;
+        }
+    }
+    return isClean;
+}
+/// NOTE: I would prefer to find a good way to do these functions without full tree traversal.
+/// There is a potential performance impact due to traversing many empty nodes to gather the information needed.
+
+/// Count of all items in this node and each sub node.
+int QuadTree::size()
+{
+    int thisCount = entStored.size();
+    for(int i = 0;i < 4;i++){
+        thisCount += quads[i] ? quads[i]->size() : 0;
+    }
+
+    return thisCount;
+}
+
+/// Counts total number of nodes in the tree.
+int QuadTree::activity(){
+    int numQuads = 1;
+    for(int i = 0; i < 4; i++){
+        numQuads += quads[i] ? quads[i]->activity() : 0;
+    }
+    return numQuads;
+}
+
+/// Checks for the deepest node
+int QuadTree::curDepth(){
+    int depthCharge = depth;
+    for (int i = 0; i < 4; i++){
+        if(quads[i]){
+            int depthcheck = quads[i]->curDepth();
+            if(depthcheck > depthCharge)
+                depthCharge = depthcheck;
+        }
+    }
+    return depthCharge;
+}
+
+
 
 
 

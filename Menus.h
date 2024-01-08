@@ -2,37 +2,89 @@
 #define MENUS_H_INCLUDED
 struct Rectangle; // from Rectangle.h
 
-class UIElement{
+class UI{
 
     protected:
     olc::PixelGameEngine* srpg;
+    std::shared_ptr<olc::Sprite> sprite = nullptr;
     olc::vi2d sides;
-    std::shared_ptr<olc::Sprite> surface = nullptr;
 
     public:
-    UIElement(olc::PixelGameEngine* game, olc::vf2d area):srpg(game),sides(area){
-        surface = std::make_shared<olc::Sprite>(sides.x,sides.y);
+    UI(olc::PixelGameEngine* game, olc::vi2d area):srpg(game),sides(area){
+        sprite = std::make_shared<olc::Sprite>(sides.x,sides.y);
     }
+    virtual ~UI() = default;
+    virtual bool update() = 0;
+    virtual olc::vi2d prepareRender() = 0;
+    virtual std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs) = 0;
 
     olc::vi2d getSize(){return sides;}
-
-    virtual ~UIElement(){};
-
-    virtual olc::vi2d render(olc::vi2d tl,srpg_data::controls& inputs)=0;
 };
 
-class TitlePlate : public UIElement {
+class Container : public UI {
+protected:
+    struct UIcomponent {
+        std::unique_ptr<UI> item;
+        olc::vi2d pos;
+    };
+    std::vector<UIcomponent> components;
+
+public:
+    enum LAYOUT {VERTICAL, ARRANGED};
+protected:
+    LAYOUT type;
+
+    olc::vi2d borderZone = {0,0};
+
+public:
+    Container(olc::PixelGameEngine* game, olc::vi2d area,LAYOUT layout = VERTICAL);
+    virtual ~Container() = default;
+
+    void addItem(std::unique_ptr<UI> element,olc::vi2d position = {0,0});
+    bool update();
+    virtual olc::vi2d prepareRender();
+    virtual std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
+    void drawNewBackground();
+
+private:
+    olc::vi2d prepareVertRender();
+    olc::vi2d prepareArrangedRender();
+};
+
+class Element : public UI {
+
+public:
+    Element(olc::PixelGameEngine* game, olc::vi2d area):UI(game,area){
+        sprite = std::make_shared<olc::Sprite>(sides.x,sides.y);
+    }
+    virtual ~Element() = default;
+};
+
+class Menu : public Container {
+    olc::vi2d center;
+
+    public:
+
+    Menu(olc::PixelGameEngine* game, olc::vi2d centerP, olc::vi2d area = {1,1});
+    ~Menu() = default;
+    void render(srpg_data::controls& inputs);
+
+};
+
+class TitlePlate : public Element {
     std::string name;
     int magnitude;
     public:
     TitlePlate(olc::PixelGameEngine* game,std::string name, olc::vf2d padding,int fontSize);
     ~TitlePlate(){};
 
-    olc::vi2d render(olc::vi2d tl, srpg_data::controls& inputs);
+    bool update();
+    olc::vi2d prepareRender();
+    std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
 
 };
 
-class Button : public UIElement {
+class Button : public Element {
     std::string name;
     std::function<void()> execute;
 
@@ -40,73 +92,48 @@ class Button : public UIElement {
     Button(olc::PixelGameEngine* game,std::string name, olc::vf2d area,std::function<void()> task);
     ~Button(){};
 
-    olc::vi2d render(olc::vi2d tl,srpg_data::controls& inputs);
-
-};
-
-class MenuContainer : public UIElement {
-protected:
-    std::vector<std::unique_ptr<UIElement>> components;
-
-    int borderZone = 0;
-public:
-    MenuContainer(olc::PixelGameEngine* game, olc::vf2d area);
-    ~MenuContainer(){};
-    void prepareRender();
-    void drawNewBackground();
-    olc::vi2d render(olc::vi2d tl,srpg_data::controls& inputs);
-    void addItem(std::unique_ptr<UIElement> element);
-
-};
-
-class Menu : public MenuContainer {
-    olc::vi2d center;
-
-
-    public:
-
-    Menu(olc::PixelGameEngine* game, olc::vi2d centerP, olc::vi2d area = {100,100});
-    ~Menu(){};
-
-    void render(srpg_data::controls& inputs);
-
-    olc::vi2d render(olc::vi2d tl,srpg_data::controls& inputs);
+    bool update();
+    olc::vi2d prepareRender();
+    std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
 
 };
 
 
-class hud : public MenuContainer{
+class Panel : public Container{
  private:
- ///inherited variables for refrence
-//    olc::PixelGameEngine* srpg;
-//    olc::vi2d sides;
-//    std::shared_ptr<olc::Sprite> surface = nullptr;
-//    std::vector<std::unique_ptr<UIElement>> components;
     olc::vi2d tl;
 public:
-    hud(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
+    //Panel(olc::PixelGameEngine* game,int left,int top,int right,int bottom);
+    Panel(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
 
-    ~hud();
+    ~Panel()= default;
 
     void render(srpg_data::controls& inputs);
+
 };
 
-class hudDisplay : public UIElement {
+class hudDisplay : public Element {
 public:
-    olc::vi2d tl;
-    hudDisplay(olc::PixelGameEngine* game,olc::vf2d area, olc::vf2d topL ) : UIElement(game,area),tl(topL){}
+    hudDisplay(olc::PixelGameEngine* game,olc::vf2d area) : Element(game,area){}
     virtual ~hudDisplay() = default;
-    virtual void update() = 0;
-    virtual void render() = 0;
+    virtual bool update() = 0;
+    virtual void onDisplay() = 0;
 };
 
-class valueBar : public hudDisplay{
+class textDisplay : public Element{
+    textDisplay(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
+    ~textDisplay() = default;
+
+    void onDisplay();
+
+};
+class valueBar : public Element{
 public:
     valueBar(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
     ~valueBar() = default;
 
-    void update();
-    void render();
+    bool update();
+    void onDisplay();
 
 };
 #endif // MENUS_H_INCLUDED

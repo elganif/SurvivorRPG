@@ -124,11 +124,11 @@ public:
         olc::vf2d titleCenter = {ScreenWidth() * 0.5f, ScreenHeight() *0.3f};
         olc::vf2d titleArea = {ScreenWidth() * 0.2f, ScreenHeight() *0.5f};
         std::unique_ptr<Menu> title = std::make_unique<Menu>(this,titleCenter);
-        title->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"Roles of",{5,5},3)));
-        title->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"Survival",{5,5},3)));
+
+        title->addItem(std::unique_ptr<UI>(std::make_unique<TitlePlate>(this,"Roles of",olc::vi2d(5,5),3)));
+        title->addItem(std::unique_ptr<UI>(std::make_unique<TitlePlate>(this,"Survival",olc::vi2d(5,5),3)));
 
         return title;
-
     }
 
 	std::unique_ptr<Menu> constructMain(){
@@ -138,14 +138,14 @@ public:
 
         std::unique_ptr<Menu> main = std::make_unique<Menu>(this,menuCenter,menuArea);
 
-        main->addItem(std::unique_ptr<UIElement>(new Button(this,"START",{menuArea.x - 6,30},
+        main->addItem(std::unique_ptr<UI>(std::make_unique<Button>(this,"START",olc::vi2d(menuArea.x - 6,30),
                         [&]{if(state.game == STATE::GAME::NONE){
                                 gamePlay->start();
                                 state.menu = STATE::MENU::CLOSED;
                                 state.game = STATE::GAME::PLAY;
                             }})));
 
-        main->addItem(std::unique_ptr<UIElement>(new Button(this,"RESTART",{menuArea.x - 6,30},
+        main->addItem(std::unique_ptr<UI>(std::make_unique<Button>(this,"RESTART",olc::vi2d(menuArea.x - 6,30),
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                                 gamePlay->start();
                                 state.menu = STATE::MENU::CLOSED;
@@ -153,7 +153,7 @@ public:
 
                             })));
 
-        main->addItem(std::unique_ptr<UIElement>(new Button(this,"EXIT",{menuArea.x - 6,30},
+        main->addItem(std::unique_ptr<UI>(std::make_unique<Button>(this,"EXIT",olc::vi2d(menuArea.x - 6,30),
                         [&]{gameOpen = false;})));
 
         return main;
@@ -166,23 +166,26 @@ public:
 
         std::unique_ptr<Menu> gameOver = std::make_unique<Menu>(this,menuCenter,menuArea);
 
-        gameOver->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"GAME",{10,10},2)));
+        gameOver->addItem(std::unique_ptr<UI>(std::make_unique<TitlePlate>(this,"GAME",olc::vi2d(10,10),2)));
 
-        gameOver->addItem(std::unique_ptr<UIElement>(new TitlePlate(this,"OVER",{10,10},2)));
+        gameOver->addItem(std::unique_ptr<UI>(std::make_unique<TitlePlate>(this,"OVER",olc::vi2d(10,10),2)));
 
-        gameOver->addItem(std::unique_ptr<UIElement>(new Button(this,"Main Menu",{200 - 6,30},
+        gameOver->addItem(std::unique_ptr<UI>(std::make_unique<Button>(this,"Main Menu",olc::vi2d(200 - 6,30),
                         [&]{gamePlay.reset();
                             state.menu = STATE::MENU::MAIN;
                             state.game = STATE::GAME::NONE;
                             })));
 
-        gameOver->addItem(std::unique_ptr<UIElement>(new Button(this,"Restart",{200 - 6,30},
+        gameOver->addItem(std::unique_ptr<UI>(new Button(this,"Restart",{200 - 6,30},
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                             gamePlay->start();
-                            state.menu = STATE::MENU::CLOSED;})));
+                            state.menu = STATE::MENU::CLOSED;
+                            state.game = STATE::GAME::PLAY;
+                            })));
 
-        gameOver->addItem(std::unique_ptr<UIElement>(new Button(this,"Exit",{200 - 6,30},
-                        [&]{gameOpen = false;})));
+        gameOver->addItem(std::unique_ptr<UI>(std::make_unique<Button>(this,"Exit",olc::vi2d(200 - 6,30),
+                        [&]{gameOpen = false;
+                            })));
         return gameOver;
 
     }
@@ -208,16 +211,16 @@ public:
 
 	    olc::vf2d movement = {0,0};
 	    if(GetKey(olc::Key::UP).bHeld){
-		    movement.y++;
+		    movement.y--;
 		}
 		if(GetKey(olc::Key::DOWN).bHeld){
-            movement.y--;
+            movement.y++;
 		}
 		if(GetKey(olc::Key::LEFT).bHeld){
-		    movement.x++;
+		    movement.x--;
 		}
 		if(GetKey(olc::Key::RIGHT).bHeld){
-            movement.x--;
+            movement.x++;
 		}
          if(movement.x != 0 || movement.y !=0){
             inputs.movement = movement.norm();
@@ -232,14 +235,9 @@ public:
             aim.x = (controller->getAxis(olc::GPAxes::RX)-0.5f) * 2;
             aim.y = (controller->getAxis(olc::GPAxes::RY)-0.5f) * 2;
             if(aim.x != 0.0f || aim.y != 0.0f){
-                inputs.aim = aim;
+                inputs.target = aim.mag2() < 1 ? aim : aim.norm();
             }
 
-
-            SetDrawTarget(srpg_data::renderLayerMenu);
-            DrawString({30,30},"controller:" + std::to_string(inputs.aim.x)+
-                " "+ std::to_string(inputs.aim.y)+
-                " "+ std::to_string(inputs.aim.mag()) ,olc::YELLOW);
         }
 
 
@@ -274,18 +272,27 @@ public:
 		takeInput(inputs);
 
 		if(inputs.escapeKey){
-
-            state.menu = state.menu == STATE::MENU::CLOSED ? STATE::MENU::MAIN : STATE::MENU::CLOSED;
+            if(state.menu == STATE::MENU::CLOSED){
+                state.menu = STATE::MENU::MAIN;
+                state.game = STATE::GAME::PAUSED;
+            } else {
+                state.menu = STATE::MENU::CLOSED;
+                state.game = STATE::GAME::PLAY;
+            }
         }
 
         if(state.menu == STATE::MENU::MAIN){
+            SetDrawTarget(srpg_data::renderLayerMenu);
             title->render(inputs);
             mainMenu->render(inputs);
+            SetDrawTarget(nullptr);
         }
+//        SetDrawTarget(srpg_data::renderLayerMenu);
+//        std::list<std::shared_ptr<Entity>> closeTest;
+//        srpg_data::gameObjects->getClosest(inputs.target, 5,closeTest);
+//        for(auto ent = closeTest.begin(); ent != closeTest.end();ent++)
+//            srpg_data::viewer->DrawLine((*ent)->getLocal(),inputs.target);
 
-
-
-        renderUI(inputs.target); //TODO: build properly
 
         if(srpg_data::debugTools)
             endMenuTime = std::chrono::high_resolution_clock::now();
@@ -297,7 +304,7 @@ public:
             }
         }
         if(state.game == STATE::GAME::OVER){
-            gameOverScreen->render(inputs);
+            gameOverScreen->onDisplay(inputs);
         }
         if(state.game != STATE::GAME::NONE){
             gamePlay->gameHudDraw(inputs);
@@ -382,9 +389,6 @@ public:
         return true;
     }
 
-    void renderUI(olc::vf2d target){
-
-    }
 };
 
 
