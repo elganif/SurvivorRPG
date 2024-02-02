@@ -2,8 +2,8 @@
 
 #include "olcPixelGameEngine.h"
 #include "olcPGEX_TransformedView.h"
-#include "Rectangle.h"
 #include "srpg_data.h"
+#include "Rectangle.h"
 #include "Managers.h"
 #include "Entities.h"
 
@@ -15,31 +15,42 @@ std::atomic_uint32_t Entity::uuid;
 
 Entity::Entity(olc::vf2d spawn, float newSize):location(spawn),entSize(newSize),entID(uuid++){}
 
-void Entity::placement(olc::vf2d destiny){
+/// sets an Entities postion in the world, not moving through space inbetween.
+void Entity::placement(olc::vf2d destiny)
+{
     location = destiny;
     if(hostTreeNode){
         hostTreeNode->validateEnt(hostTreeNode,myself);
     }
 }
 
-void Entity::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
-    float friction = 0.75;
-
-    olc::vf2d totalDist = walkingDirection + momentum;
-    if(totalDist.mag2() > 1.0f){
-    // Set max speed limit currently half a screen per second.
-        totalDist = totalDist.norm();
-    }
-    momentum -= momentum * fElapsedTime;
-    momentum += totalDist * fElapsedTime;
-    momentum *= friction;
-    movement((totalDist * fElapsedTime) + worldMove);
-    walkingDirection = {0,0};
-}
-
-void Entity::movement(olc::vf2d destiny){
+/// Moves Entity through space in the world (full functionality TBD)
+void Entity::movement(olc::vf2d destiny)
+{
     placement(location + destiny);
 }
+
+/// frame update for Entity
+void Entity::update(float fElapsedTime,olc::vf2d worldMove)
+{
+    movement(worldMove);
+}
+
+//void Entity::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
+//    float friction = 0.75;
+//
+//    olc::vf2d totalDist = walkingDirection + momentum;
+//    if(totalDist.mag2() > 1.0f){
+//     Set max speed limit currently half a screen per second.
+//        totalDist = totalDist.norm();
+//    }
+//    momentum -= momentum * fElapsedTime;
+//    momentum += totalDist * fElapsedTime;
+//    momentum *= friction;
+//    movement((totalDist * fElapsedTime) + worldMove);
+//    walkingDirection = {0,0};
+//}
+
 
 /// Used to create entity decal out of sprite passed in
 void Entity::setRender(std::shared_ptr<olc::Sprite> sprite){
@@ -99,14 +110,105 @@ olc::vf2d Entity::rotatePt(olc::vf2d point,olc::vf2d angle){
     return updatedpoint;
 }
 
+
+
+/// class Npc : public Entity
+
+Npc::Npc( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
+    speed = 0.15f;
+    fColour = olc::BLACK;
+    lineColour = olc::DARK_RED;
+}
+
+Npc::~Npc(){};
+
+Entity::TYPE Npc::whoAreYou(){ return NPC;}
+
+float Npc::getHP(){
+    return HP;
+}
+
+void Npc::update(float fElapsedTime,olc::vf2d worldMove){
+    if (isValid()) {
+        walkingDirection = -getLocal().norm() * speed;
+    }
+    float friction = 0.75;
+
+    olc::vf2d totalDist = walkingDirection + momentum;
+    if(totalDist.mag2() > 1.0f){
+     //Set max speed limit currently half a screen per second.
+        totalDist = totalDist.norm();
+    }
+    momentum -= momentum * fElapsedTime;
+    momentum += totalDist * fElapsedTime;
+    momentum *= friction;
+    movement((totalDist * fElapsedTime) + worldMove);
+    walkingDirection = {0,0};
+
+}
+
+bool Npc::whatIsLife(){
+    return HP > 0.0f;
+}
+
+void Npc::onOverlap(std::shared_ptr<Entity> other){
+    if(*this == *other)
+        return;
+    if(other->whoAreYou() == HERO){
+        //Collide with Hero
+        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
+        return;
+    }
+    if(other->whoAreYou() == NPC){
+        //Collide with Friendly
+        std::dynamic_pointer_cast<Npc>(other)->bump(getLocal(),entSize);
+        return;
+    }
+    if(other->whoAreYou() == PROJECTILE){
+        // subtract projectiles damage from hp
+        HP = HP - std::dynamic_pointer_cast<Projectile>(other)->impact(this);
+        return;
+    }
+}
+
+void Npc::bump(olc::vf2d otherLoc,float otherSize){
+    //srpg_data::timers->start("bumpin");
+    olc::vf2d entRelLoc = (getLocal() - otherLoc); // coordinate Dist
+    float collideDist = (otherSize + entSize);
+
+    if(collideDist * collideDist > entRelLoc.mag2()){
+        float overLap = collideDist - entRelLoc.mag();
+
+        float force = ((overLap * overLap) / entSize)*10;
+        momentum += entRelLoc.norm()*force;
+
+    }
+    //srpg_data::timers->stop("bumpin");
+}
+
+void Npc::render(){
+    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
+
+    // debug collider
+    if(srpg_data::debugTools){
+        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_RED);
+    }
+}
+
+bool Npc::operator < (const Npc& other) const
+{
+    return (HP < other.HP );
+}
+
 /// class Hero : public Entity
 
-Hero::Hero( olc::vf2d spawn, float newSize,olc::PixelGameEngine* game, float world):Entity(spawn,newSize){
+Hero::Hero( olc::vf2d spawn, float newSize,olc::PixelGameEngine* game, float world):Npc(spawn,newSize){
     speed = 0.5f;
     fColour = olc::BLACK;
     lineColour = olc::BLUE;
     projectileCooldown = 0;
     bulletMan = std::make_unique<ProjectileManager>(game,world);
+    bulletMan->setProjectileStats(bulletLife,bulletSpeed,1);
     bulletMan->makeRender(pSize);
 
 }
@@ -114,14 +216,8 @@ Hero::~Hero(){};
 
 Entity::TYPE Hero::whoAreYou(){return HERO;}
 
-bool Hero::whatIsLife(){return HP > 0.0f;}
-
-float Hero::getHP(){
-    return HP;
-}
-
-void Hero::update(float fElapsedTime, srpg_data::controls& inputs){
-    bulletMan->update(fElapsedTime);
+void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg_data::controls& inputs){
+    bulletMan->update(fElapsedTime,worldMove);
 
     walkingDirection = inputs.movement;
 
@@ -133,19 +229,13 @@ void Hero::update(float fElapsedTime, srpg_data::controls& inputs){
     while( projectileCooldown >= 0){
         projectileCooldown -= 1/fireRate;
         std::list<std::shared_ptr<Entity>> targets;
-        srpg_data::gameObjects->getFoes(getLocal(),5,fireCount,QuadTree::WEAK ,targets);
+        srpg_data::gameObjects->getFoes(getLocal(),bulletLife*bulletSpeed,fireCount, targets, QuadTree::CLOSE);
+
         for(auto ent = targets.begin(); ent != targets.end(); ent++){
             fireProjectile((*ent)->getLocal());
         }
     }
-}
-
-void Hero::update(float fElapsedTime){
-}
-
-void Hero::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
-    Entity::eofUpdate(fElapsedTime,{0,0});
-    bulletMan->eofUpdate(fElapsedTime,worldMove);
+    movement(walkingDirection * fElapsedTime);
 }
 
 bool Hero::fireProjectile(const olc::vf2d& target){
@@ -166,9 +256,9 @@ void Hero::onOverlap(std::shared_ptr<Entity> other){
         //Collide with Hero
         std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
     }
-    if(other->whoAreYou() == FOE){
+    if(other->whoAreYou() == NPC){
         //Collide with Friendly
-        std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize);
+        std::dynamic_pointer_cast<Npc>(other)->bump(getLocal(),entSize);
     }
     if(other->whoAreYou() == PROJECTILE){
         // subtract projectiles damage from hp
@@ -176,20 +266,6 @@ void Hero::onOverlap(std::shared_ptr<Entity> other){
     }
 }
 
-void Hero::bump(olc::vf2d otherLoc,float otherSize){
-
-    olc::vf2d entRelLoc = (getLocal() - otherLoc); // magnitude of distance
-    float colideDist = (otherSize + entSize);
-    if(colideDist * colideDist > entRelLoc.mag2()){
-        float overLap = colideDist - entRelLoc.mag();
-
-        float force = ((overLap * overLap) / entSize) *15;
-        momentum += entRelLoc.norm()*force*0.4f;
-
-        HP = HP - ( 1.0f/60.0f ); // KINDA BAD HACK: TODO Build proper enemy attack function - for now remove hp equivelent to time tick
-
-    }
-}
 
 
 void Hero::render(){
@@ -237,80 +313,6 @@ void Hero::makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::Pi
     game->SetDrawTarget(nullptr);
 }
 
-
-
-/// class Foe : public Entity
-
-Foe::Foe( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
-    speed = 0.15f;
-    fColour = olc::BLACK;
-    lineColour = olc::DARK_RED;
-}
-
-Foe::~Foe(){};
-
-Entity::TYPE Foe::whoAreYou(){ return FOE;}
-
-float Foe::getHP(){
-    return HP;
-}
-
-void Foe::update(float fElapsedTime){
-    if (isValid()) {
-        walkingDirection = -getLocal().norm() * speed;
-    }
-}
-
-bool Foe::whatIsLife(){
-    return HP > 0.0f;
-}
-
-void Foe::onOverlap(std::shared_ptr<Entity> other){
-    if(*this == *other)
-        return;
-    if(other->whoAreYou() == HERO){
-        //Collide with Hero
-        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
-    }
-    if(other->whoAreYou() == FOE){
-        //Collide with Friendly
-        std::dynamic_pointer_cast<Foe>(other)->bump(getLocal(),entSize);
-    }
-    if(other->whoAreYou() == PROJECTILE){
-        // subtract projectiles damage from hp
-        HP = HP - std::dynamic_pointer_cast<Projectile>(other)->impact(this);
-    }
-}
-
-void Foe::bump(olc::vf2d otherLoc,float otherSize){
-
-    olc::vf2d entRelLoc = (getLocal() - otherLoc); // magnitude of distance
-    float colideDist = (otherSize + entSize);
-    if(colideDist * colideDist > entRelLoc.mag2()){
-        float overLap = colideDist - entRelLoc.mag();
-
-        float force = ((overLap * overLap) / entSize)*10;
-        momentum += entRelLoc.norm()*force;
-
-    }
-
-}
-
-void Foe::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
-
-    // debug collider
-    if(srpg_data::debugTools){
-        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_RED);
-    }
-}
-
-
-bool Foe::operator < (const Foe& other) const
-{
-    return (HP < other.HP );
-}
-
 /// class Projectile : public Entity
 Projectile::Projectile( olc::vf2d spawn, olc::vf2d projSize, float duration,
                         olc::vf2d orientation,int hitCount, olc::PixelGameEngine* game)
@@ -322,25 +324,29 @@ Projectile::Projectile( olc::vf2d spawn, olc::vf2d projSize, float duration,
 
 Projectile::~Projectile(){}
 
-void Projectile::update(float fElapsedTime){
+void Projectile::update(float fElapsedTime,olc::vf2d worldMove)
+{
     if (isValid()) {
-        walkingDirection = direction;
+        movement(direction * fElapsedTime + worldMove);
     }
+
 }
 
 bool Projectile::whatIsLife()
 {
     return (lifespan > 0.0f && hits > 0);
 }
+
 /// Sets values used to determine is Alive to 0
-void Projectile::kill(){
+void Projectile::kill()
+{
     lifespan = 0.0f;
     hits = 0;
 }
 
 /// What does a projectile do when it hits another entity
-float Projectile::impact(Entity* other){
-
+float Projectile::impact(Entity* other)
+{
     if(isValid() && (getLocal() - other->getLocal()).mag2() <= other->getSize() * other->getSize()){
         hits--;
         return 10.0f;// Damage for now, eventualy should be struct of effects?
@@ -355,33 +361,33 @@ float Projectile::getLife()
     return lifespan;
 }
 
-void Projectile::render(){
+void Projectile::render()
+{
 
     float rad = atan2(direction.x, -direction.y);
 
     olc::vf2d proLoc = rotatePt(olc::vf2d( entSize*0.5, entSize*0.5),direction.norm());
 
-    srpg_data::viewer->DrawRotatedDecal(proLoc,image.get(),rad);
+    srpg_data::viewer->DrawRotatedDecal(getLocal(),image.get(),rad,{entSize/2.0f,shape/2.0f});
 }
 
 
 /// class Decoration : public Entity
-Decoration::Decoration( olc::vf2d spawn, float newSize):Entity(spawn,newSize){
-
+Decoration::Decoration( olc::vf2d spawn, float newSize):Entity(spawn,newSize)
+{
     lineColour = olc::DARK_GREEN;
 }
-Decoration::~Decoration(){};
+Decoration::~Decoration(){}
 
-bool Decoration::whatIsLife(){return true;}
+bool Decoration::whatIsLife()
+{return true;}
 
-Entity::TYPE Decoration::whoAreYou(){ return DECORATION;}
+Entity::TYPE Decoration::whoAreYou()
+{ return DECORATION;}
 
-void Decoration::render(){
+void Decoration::render()
+{
     srpg_data::viewer->DrawDecal(getBoxCollider().tl,image.get());
-
-}
-
-void Decoration::update(float fElapsedTime){
 }
 
 

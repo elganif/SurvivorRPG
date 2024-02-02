@@ -7,7 +7,7 @@ These structures are designed to centralize functionality for groups of entities
 
 **************************/
 class Hero;
-class Foe;
+class Npc;
 class Projectile;
 class Decoration;
 
@@ -24,15 +24,13 @@ protected:
     Manager<E>(olc::PixelGameEngine* srpg, float worldRadius);
     ~Manager<E>();
     int size();
-    int updateAndClear(float fElapsedTime);
     void spawn();
+    int update(float fElapsedTime,olc::vf2d movement);
     public:
-    void eofUpdate(float fElapsedTime,olc::vf2d movement);
-
 };
 
 ///Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
-class FoeManager : public Manager<Foe>{
+class FoeManager : public Manager<Npc>{
     private:
     int maxPop;
     float foeSize = 0.05f;
@@ -45,8 +43,8 @@ class FoeManager : public Manager<Foe>{
     int getKills();
 
     void spawn(float foeSize);
-    void update(float fElapsedTime);
-    void eofUpdate(float fElapsedTime,olc::vf2d movement);
+    void update(float fElapsedTime,olc::vf2d worldMove);
+    void collision();
 
     void initalize(int numFoes);
     void makeRender();
@@ -56,12 +54,16 @@ class FoeManager : public Manager<Foe>{
 /// Manages projectiles
 class ProjectileManager : public Manager<Projectile>{
 private:
+    float life = 0;
+    float speed = 0;
+    int hits = 0;
 public:
     ProjectileManager(olc::PixelGameEngine* srpg, float worldRadius);
     ~ProjectileManager();
+
+    void setProjectileStats(float life, float speed,int hits);
     void spawn(olc::vf2d origin, olc::vf2d momentum, olc::vf2d bulletSize);
-    void update(float fElapsedTime);
-    void eofUpdate(float fElapsedTime,olc::vf2d movement);
+    void update(float fElapsedTime,olc::vf2d worldMove);
 
     void makeRender(olc::vf2d pSize);
 };
@@ -77,8 +79,7 @@ public:
     ~DecalManager();
 
     void initalize();
-    void update(float fElapsedTime);
-    void eofUpdate(float fElapsedTime,olc::vf2d movement);
+    void update(float fElapsedTime,olc::vf2d worldMove);
 
     void makeRender();
 };

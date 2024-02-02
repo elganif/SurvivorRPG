@@ -1,22 +1,21 @@
 #include "olcPixelGameEngine.h"
 #include "olcPGEX_TransformedView.h"
+#include "srpg_data.h"
 #include "Rectangle.h"
 #include "Entities.h"
-#include "srpg_data.h"
 
-const bool srpg_data::debugTools = true; /// Set false to skip debug
 
 ///class QuadTree
-int QuadTree::depthLimit = 6; /// static depth limit.
+int QuadTree::depthLimit = 6; /// initialize static depth limit.
 
 /// Internally used contsructor that uses a passed rectangle instead of corner coordinates.
 QuadTree::QuadTree(Rectangle newArea, int newDepth,QuadTree* parent)
     :quadArea(newArea),depth(newDepth),parentNode(parent)
 {}
 
-/// Genereal constructor for external calls
-QuadTree::QuadTree(olc::vf2d newtl, olc::vf2d newbr, int newdepth)
-    :quadArea({newtl,newbr}),depth(newdepth),parentNode(nullptr)
+/// General constructor for external calls
+QuadTree::QuadTree(olc::vf2d newtl, olc::vf2d newbr)
+    :quadArea({newtl,newbr}),depth(0),parentNode(nullptr)
 {}
 
 /// Deconstruct, cleaning up lists and subquads.
@@ -33,7 +32,7 @@ QuadTree::~QuadTree(){
 void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
      // Check if it belongs lower in the tree
      for(int i = 0;i < 4;i++){
-        if(depth < depthLimit && childArea[i].contains(newEnt->getBoxCollider())){
+        if(depth < depthLimit && childArea[i].contains(newEnt->getBoxCollider() )){
             if(!quads[i]){
                 quads[i] = new QuadTree(childArea[i],depth+1,this);
             }
@@ -51,89 +50,103 @@ void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
 void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>>& returns){
     // collect overlaps from children
     for(int i = 0;i < 4;i++){
-        if(childArea[i].overlaps(area) && quads[i]){
+        if(quads[i] && childArea[i].overlaps(area)){
              quads[i]->getOverlapItems(area,returns);
         }
     }
     // add any overlaped items from this layer
-    for(auto it = entStored.begin(); it!= entStored.end(); it++){
-        if(area.overlaps((*it)->getBoxCollider())){
-            returns.push_back((*it));
+    for(std::shared_ptr<Entity>& ent : entStored){////auto it = entStored.begin(); it!= entStored.end(); it++){
+        if(area.overlaps(ent->getBoxCollider())){
+            returns.push_back(ent);
         }
     }
     return;
 }
 
-/// Starting at targLoc finds up to numTarg closest targets. returns number of targets found
-int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, TARG targType, std::list<std::shared_ptr<Entity>>& returns){
-    /// logic to turn targType into a specific sorting function
-    std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targMethod;
+/// Starting at targLoc finds up to numTarg targets within range using specified function. returns number of targets found
+int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, std::list<std::shared_ptr<Entity>>& returns, TARG targType){
+
+    /// First take targType and exchange it for the function used to determine which entities are desired
+    std::function<float(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targMethod;
+
     switch (targType){
         case CLOSE:
-            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+            targMethod = [targetLoc](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
                                     {return (f->getLocal() - targetLoc).mag2() < (s->getLocal() - targetLoc).mag2(); };
-
-            break;
+        break;
         case WEAK:
-            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
-                                    {return (( (Foe*)(f.get()) )->getHP() < ( (Foe*)(s.get()) )->getHP()); };
+            targMethod = [](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+                                    {return (( (Npc*)(f.get()) )->getHP() < ( (Npc*)(s.get()) )->getHP()); };
         break;
         case STRONG:
-            targMethod = [&](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
-                                    {return (( (Foe*)(f.get()) )->getHP() > ( (Foe*)(s.get()) )->getHP()); };
+            targMethod = [](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
+                                    {return (( (Npc*)(f.get()) )->getHP() > ( (Npc*)(s.get()) )->getHP()); };
         break;
     }
 
-    float curDist2 = range * range;
-
-    return getFoes(targetLoc,range,numTarg,targMethod,returns,curDist2 );
-}
-
-int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targType, std::list<std::shared_ptr<Entity>>& returns,float curDist2){
-    for(int i = 0;i < 4;i++){
-        if(childArea[i].contains(targetLoc) && quads[i]){
-             quads[i]->getFoes(targetLoc,range,numTarg,targType,returns,curDist2);
-        }
-    }
-      for(auto ent = entStored.begin(); ent != entStored.end(); ent++){
-        float dist2 = ((*ent)->getLocal() - targetLoc).mag2();
-//returns.size() < numTarg ||
-        if((*ent)->whoAreYou() == Entity::FOE && ( dist2 < curDist2) ){
-            returns.push_front(*ent);
-
-            returns.sort( targType);
-            auto lastInLine = returns.back();
-            curDist2 = (lastInLine->getLocal() - targetLoc).mag2();
-        }
-    }
-    for(int i = 0; i < 4; i++){
-        if(quads[i] && !childArea[i].contains(targetLoc) ){
-            olc::vf2d rectPoint = targetLoc.clamp(childArea[i].tl,childArea[i].tl + childArea[i].sides);
-            float qDist = (rectPoint - targetLoc).mag2();
-            if(qDist < curDist2){
-                quads[i]->getFoes(targetLoc,range,numTarg,targType,returns,curDist2);
-            }
-            while(returns.size() > numTarg){
-                returns.pop_back();
-            }
-        }
-    }
-
-
+    /// square up range now as other distance calculations will also be squared
+    range = range * range;
+    /// call and return recursive search method
+    getFoes(targetLoc,range,numTarg,returns,targMethod);
     return returns.size();
 }
 
-/// Position validation that is called directly by entities each time one moves.
-/// Treenode and entIT Values are to be updated be elevator functions once entity
+/// Recursive search for NPCs meeting targeting requirements.
+void QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg,std::list<std::shared_ptr<Entity>>& returns,
+                        std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targType)
+{
+
+    /// Start by traveling to the bottom of the tree. Items will be checked on the return.
+    for(int i = 0;i < 4;i++){
+        if(childArea[i].contains(targetLoc) && quads[i]){
+             quads[i]->getFoes(targetLoc,range,numTarg,returns,targType);
+        }
+    }
+
+    /// Check entities in the current quad
+    for(auto ent = entStored.begin(); ent != entStored.end(); ent++){
+        if ( !(*ent)->whoAreYou() == Entity::NPC ){
+            continue; /// Not who we are looking for
+        }
+        if(( (*ent)->getLocal() - targetLoc).mag2() > range ){
+            continue; /// ent is out of range
+        }
+        if(returns.size() >= numTarg && targType( (*ent),returns.back())){
+            continue; /// target is not better than current options
+        } /// else
+        /// add ent, sort into correct location and remove last one if list was full
+        returns.push_front(*ent);
+        returns.sort(targType);
+        if(returns.size() >= numTarg){
+            returns.pop_back();
+        }
+    }
+
+    /// check sub-quads that do not contain the point are in range and search them as needed
+    for(int i = 0; i < 4; i++){
+        if(!childArea[i].contains(targetLoc) && quads[i]){
+            olc::vf2d closestPoint = targetLoc.clamp(childArea[i].tl,childArea[i].tl + childArea[i].sides);
+            float qDist = (closestPoint - targetLoc).mag2();
+            if(qDist < range){
+                quads[i]->getFoes(targetLoc,range,numTarg,returns,targType);
+            }
+        }
+    }
+}
+
+/// Position validator that is called directly by entities each time one moves.
+/// Treenode and entIT Values are to be updated by elevator functions once entity
 /// is placed in new node.
 void QuadTree::validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
     /// First record a stable copy of the iterator because once the entity is moved the entIT will already be updated on the return trip
+
     std::list<std::shared_ptr<Entity>>::iterator myEntIT = entIT;
 
     if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
 
         parentNode->upEscalator(treeNode,entIT);
         entStored.erase(myEntIT);
+        srpg_data::timers->stop("validation");
         return;
     } // else not going up, check down
     for(int i = 0; i < 4; i++){
@@ -145,10 +158,12 @@ void QuadTree::validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity
             entStored.erase(myEntIT);
             return;
         }
-    } // else: not down either so nothing to do.
+    } // else: Validation successful, return.
     return;
 }
-/// Passes units up the tree during the validation process. Updates treeNode and entIT
+
+/// Passes units up the tree recursively during the validation process.
+/// Updates treeNode and entIT once correct node is found.
 void QuadTree::upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
     if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
         parentNode->upEscalator(treeNode,entIT);
@@ -168,7 +183,9 @@ void QuadTree::upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity
     entIT = entStored.begin();
     return;
 }
-/// passes units down the tree during validation. Updates treeNode and entIT
+
+/// passes units down the tree recursively during validation.
+/// Updates treeNode and entIT once correct node is found
 void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
     for(int i = 0; i < 4; i++){
         if( depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
@@ -265,6 +282,133 @@ int QuadTree::curDepth(){
 
 
 
+/// class Profiler {
+
+    Profiler::Profiler()
+    {
+    }
+
+    void Profiler::frameMark()
+    { /// Called to mark when a new frame cycle is started.
+        stop(defaultName);
+        events[defaultName].push_front(Event(defaultName,frameCounter++));
+        /// remove events over 1 second old to prevent excessive memory build up.
+        std::chrono::_V2::steady_clock::time_point now = std::chrono::_V2::steady_clock::now();
+        for(auto& [key,eventList] : events ){
+            eventList.remove_if( [now](auto &value)
+                                    { if( value.stopT.time_since_epoch().count() == 0) {return false;}
+                                    return std::chrono::duration<float>(now - value.startT).count() > 1.0f ;} );
+        }
+    }
 
 
+    void Profiler::start(std::string timerID)
+    {/// Create an event and add it at first time in list
+
+        events[timerID].push_front(Event(timerID,events[defaultName].front().frameNum));
+    }
+
+    /// Update the end time of the front item.
+    float Profiler::stop(std::string timerID)
+    {
+        if(events[timerID].size() == 0)
+            {return 0;}
+        events[timerID].front().stopT = std::chrono::_V2::steady_clock::now();
+        return events[timerID].front().passedTime();
+    }
+
+    bool Profiler::running(std::string timerID)
+    {
+        if(events.count(timerID)){
+
+            return (events[timerID].front().stopT.time_since_epoch().count() != 0);
+        } /// else
+        return false; /// no such timer listed
+    }
+    void Profiler::drawDebug(olc::PixelGameEngine* game)
+    {
+        start("debug"); /// valuable to know how much time is lost to createing this display.
+
+
+        /// the first closed default event is used to determine graph scaleing
+        std::chrono::_V2::steady_clock::time_point frameBegin;
+        std::chrono::_V2::steady_clock::time_point frameEnd;
+        int lastFrameNum;
+        bool frameFound = false;
+
+        for(Event& checkFrame : events[defaultName]){
+            if(!frameFound && checkFrame.stopT.time_since_epoch().count() != 0){
+                frameBegin = checkFrame.startT;
+                frameEnd = checkFrame.stopT;
+                lastFrameNum = checkFrame.frameNum;
+                frameFound = true;
+                break; // Closed frame found no need to continue for loop.
+            }
+        }
+        if(!frameFound){
+            return; // If no closed frame was found We dont have assigned values. Expected to happen on first frame call.
+        }
+
+        game->SetDrawTarget(nullptr); /// Draw to default layer above all others
+        float numFramesShown = 5;
+        int lineHeight = 10;
+
+        int wide = game->ScreenWidth();
+        int height = game->ScreenHeight();
+
+        float frameScale = (wide/numFramesShown) / (std::chrono::duration<float>(frameEnd - frameBegin).count());
+        float displayStart = (wide/numFramesShown);
+
+        float totTimeUsed = std::chrono::duration<float>(frameEnd - frameBegin).count();
+
+        int drawHeight = height - lineHeight;
+
+        for(auto& [key,eventList] : events ){
+            if(eventList.size() == 0){
+                continue; /// no need to operate on empty lists
+            }
+            bool skipExcessiveDraws = false;
+            if(eventList.size() >= 100 + events[defaultName].size())
+                skipExcessiveDraws = true;
+
+            /// iterate through this event drawing the time frames it occupied
+            float totalTimeRun = 0;
+            int eventPerFrame = 0;
+            for(Event& timer : eventList){
+                if(timer.frameNum > lastFrameNum || timer.stopT.time_since_epoch().count() == 0)
+                    continue; // this cycle or timer event is not yet closed and will be skipped.
+                if(skipExcessiveDraws && timer.frameNum < lastFrameNum)
+                    break;// if a timer has excessive events once we finish the timed frame we skip the remainder of the list.
+
+                float ending = std::chrono::duration<float>(frameEnd - timer.stopT).count();
+                float length = timer.passedTime();
+                olc::Pixel colour = olc::DARK_YELLOW;
+
+                /// Accumulate some data based on the last rendered frame.
+                if(timer.frameNum == lastFrameNum){
+                    totalTimeRun += length;
+                    eventPerFrame ++;
+                    colour = olc::GREEN;
+                }
+                int rectStart = ending*frameScale+displayStart;
+                /// Only need to draw if it will appear on screen.
+                if (rectStart < wide)
+                    game->DrawRect(rectStart,drawHeight,length*frameScale,lineHeight,colour);
+
+            }
+
+            float percentOfFrame = totalTimeRun / (1.0f/60.0f) * 100;
+            /// Write our analytics about the bar on screen
+            game->DrawString(lineHeight,drawHeight+1,key +" "+ std::to_string(eventPerFrame),olc::YELLOW);
+
+            std::string percentage = std::to_string(percentOfFrame);
+            percentage = percentage.substr(0,percentage.find(".")+4);
+            game->DrawString(displayStart - (percentage.size() * 8),drawHeight+1,percentage,olc::YELLOW);
+            drawHeight -= lineHeight;
+        }
+        for(int i = displayStart; i < wide;i += displayStart){
+            game->DrawLine(i,drawHeight,i,height,olc::BLUE);
+        }
+    stop("debug");
+    }
 

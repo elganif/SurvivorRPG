@@ -2,9 +2,9 @@
 
 #include "olcPixelGameEngine.h"
 #include "olcPGEX_TransformedView.h"
+#include "srpg_data.h"
 #include "Rectangle.h"
 #include "Entities.h"
-#include "srpg_data.h"
 #include "Managers.h"
 #include "Menus.h"
 
@@ -15,7 +15,8 @@ template <class E>
 Manager<E>::Manager(olc::PixelGameEngine* game, float world) : srpg(game),worldRadius(world) {}
 
 template <class E>
-Manager<E>::~Manager() {
+Manager<E>::~Manager()
+{
     drawing.reset();
     image.reset();
 }
@@ -24,38 +25,30 @@ template <class E>
 int Manager<E>::size(){
     return items.size();
 }
+
 template <class E>
-int Manager<E>::updateAndClear(float fElapsedTime){
+int Manager<E>::update(float fElapsedTime,olc::vf2d worldMove){
     int removed = 0;
-    for( auto ent = items.begin(); ent != items.end(); ) /// no iterator due to erase call - all paths must increment.
+    items.remove_if([](auto &value) {return !value->isValid();} );
+    for( auto& ent : items)
     {
-        if((*ent)->isValid()){
-            (*ent)->update(fElapsedTime);
-            ent++;
-            continue;
-        } // else ent is not alive and can be removed
-        (*ent).reset();
-        items.erase(ent++);
-        removed++;
+        ent->update(fElapsedTime,worldMove);
     }
     return removed;
 }
 
-template <class E>
-void Manager<E>::eofUpdate(float fElapsedTime, olc::vf2d movement){
-    for( auto ent = items.begin(); ent != items.end();ent++ ){
-        (*ent)->eofUpdate(fElapsedTime,movement);
-    }
-}
+
 
 /// Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
 /// class FoeManager
 
 FoeManager::FoeManager(olc::PixelGameEngine* game, float world):Manager(game, world){};
+
 FoeManager::~FoeManager(){}
 
 
-void FoeManager::initalize(int numFoes) {
+void FoeManager::initalize(int numFoes)
+{
     maxPop = numFoes;
 
     /// Set up the sprite & decal for foes
@@ -63,33 +56,34 @@ void FoeManager::initalize(int numFoes) {
 
     for(int i = 0; i< maxPop;i++){
         spawn(foeSize);
-
     }
 }
 
 /// Code for creating a new unit
-void FoeManager::spawn(float foeSize){
+void FoeManager::spawn(float foeSize)
+{
     olc::vf2d attempt;
     float spawnRad = worldRadius;
     /// Get a random point, equal distributed around center by disreguarding corners
     do{
-    attempt.x =  (float)rand() / (float)RAND_MAX - 0.5f; // these subtractions give a range around zero and save a divide by 2 later
-    attempt.y = (float)rand() / (float)RAND_MAX - 0.5f;
-    } while(attempt.mag2() > 1.0f && attempt.mag2() != 0.0f);
+    attempt.x = (float)rand() / (float)RAND_MAX - 0.5f; // gives range between -0.5 and +0.5
+    attempt.y = (float)rand() / (float)RAND_MAX - 0.5f; // this saves a divide by 2 calculation later
+    } while(attempt.mag2() > (0.5f * 0.5f) && attempt.mag2() != 0.0f);
 
     /// establish spawn distance
-    attempt *= worldRadius; // attempt is already between 0 and .5 units so this is only half way to edge of the world
-    attempt += attempt.norm() * 2; // move away from center 2 units to ensure not spawning on screen
+    attempt *= worldRadius; // attempt is already at radius between 0 and .5 units so this is goes half way to edge of world
+    attempt += attempt.norm() * 2; // move away from center 2 units to prevent visible spawning on screen
 
     /// Add spawned unit to the list and the quad tree
-    std::shared_ptr<Foe> theEvil = std::make_shared<Foe>(attempt,foeSize);
+    std::shared_ptr<Npc> theEvil = std::make_shared<Npc>(attempt,foeSize);
     theEvil->setSharedDecal(drawing);
-    items.push_back(theEvil);
-    srpg_data::gameObjects->insertItem(std::move(theEvil));
+    srpg_data::gameObjects->insertItem(theEvil);
+    items.push_back(std::move(theEvil));
 }
 
 
-void FoeManager::makeRender(){
+void FoeManager::makeRender()
+{
     /// prepare the sprite object for drawing
     olc::vi2d area = srpg_data::viewer->ScaleToScreen({foeSize*2,foeSize*2} ) ;
     image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
@@ -119,67 +113,72 @@ void FoeManager::makeRender(){
 
     /// Set decal and return draw target to default
     drawing = std::make_shared<olc::Decal>(image.get());
-    srpg->SetDrawTarget(nullptr);;
+    srpg->SetDrawTarget(nullptr);
 }
 
-void FoeManager::update(float fElapsedTime){
+void FoeManager::collision()
+{
 
-    deadFoes += updateAndClear(fElapsedTime);
-
-    /// after updates and removal check collisions.
-    for( auto V = items.begin(); V!=items.end();V++ ){
-        if((*V)->getLocal().mag() > worldRadius){
-            (*V)->movement((*V)->getLocal().norm() * worldRadius * -2);
-        }
+    for(std::shared_ptr<Npc> foe : items){
         std::list<std::shared_ptr<Entity>> impacts;
-        srpg_data::gameObjects->getOverlapItems((*V)->getBoxCollider(),impacts);
-        for(auto t = impacts.begin();t != impacts.end();t++){
-            if( (*V) != (*t))
-                (*V)->onOverlap((*t)) ;
+        srpg_data::gameObjects->getOverlapItems(foe->getBoxCollider(),impacts);
+        for(std::shared_ptr<Entity> other : impacts){
+            foe->onOverlap(other);
         }
+    }
+}
 
+void FoeManager::update(float fElapsedTime,olc::vf2d worldMove)
+{
+
+    for(auto foe = items.begin() ; foe != items.end();){ /// iteration inside loop due to erase call affecting position.
+        if( !(*foe)->isValid()){
+            deadFoes++;
+            items.erase(foe++);
+            continue;
+        }
+        /// if foes are too far from player teleport them to opposite side
+        if((*foe)->getLocal().mag2() > worldRadius * worldRadius){
+            (*foe)->movement((*foe)->getLocal().norm() * worldRadius * -2);
+        }
+        (*foe)->update(fElapsedTime,worldMove);
+        foe++; /// iteration
     }
 
-    /// On each frame that enemies are below desired population add one more.
+    /// On each frame that enemies are below desired population add one more. Collision solves overlaps next frame
     if(items.size() < maxPop){
         spawn(foeSize);
     }
-    items.sort();
 }
 
-void FoeManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
-    Manager<Foe>::eofUpdate(fElapsedTime, movement);
+int FoeManager::getKills()
+{
+    return deadFoes;
 }
-
-int FoeManager::getKills(){return deadFoes;}
 
 
 
 /// class ProjectileManager
 ProjectileManager::ProjectileManager(olc::PixelGameEngine* srpg, float worldRadius) : Manager(srpg,worldRadius){};
-ProjectileManager::~ProjectileManager(){
 
+ProjectileManager::~ProjectileManager(){}
+
+void ProjectileManager::setProjectileStats(float lifeTime, float travelSpeed, int numHits){
+    life = lifeTime;
+    speed = travelSpeed;
+    hits = numHits;
 }
 
-//void initalize(int numFoes);
-void ProjectileManager::spawn(olc::vf2d origin, olc::vf2d momentum, olc::vf2d bulletSize){
-    std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(origin,bulletSize,2.0f,momentum,1,srpg);
+void ProjectileManager::spawn(olc::vf2d origin, olc::vf2d target, olc::vf2d bulletSize){
+    olc::vf2d momentum = target.norm() * speed;
+    std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(origin,bulletSize,life,momentum,hits,srpg);
     temp->setSharedDecal(drawing);
     items.push_front(temp);
     srpg_data::gameObjects->insertItem(temp);
 }
 
-void ProjectileManager::update(float fElapsedTime){
-    updateAndClear(fElapsedTime);
-    while(items.size() > 5000){
-        items.back()->kill();
-        items.back()->isValid();
-        items.pop_back();
-    }
-}
-
-void ProjectileManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
-    Manager<Projectile>::eofUpdate(fElapsedTime, movement);
+void ProjectileManager::update(float fElapsedTime,olc::vf2d worldMove){
+    Manager<Projectile>::update(fElapsedTime,worldMove);
 }
 
 void ProjectileManager::makeRender(olc::vf2d pSize){
@@ -253,26 +252,22 @@ void DecalManager::initalize(){
     }
 }
 
-void DecalManager::update(float fElapsedTime){
-    for(auto it = items.begin() ; it != items.end() ; it++ ){
-        (*it)->update(fElapsedTime);
+void DecalManager::update(float fElapsedTime, olc::vf2d worldMove){
+    for(auto it : items ){
+        it->update(fElapsedTime,worldMove);
 
-        if((*it)->getLocal().x > worldRadius)
-            (*it)->movement({-worldRadius * 2,0});
+        if(it->getLocal().x > worldRadius)
+            it->movement({-worldRadius * 2,0});
 
-        if((*it)->getLocal().x < -worldRadius)
-            (*it)->movement({worldRadius * 2,0});
+        if(it->getLocal().x < -worldRadius)
+            it->movement({worldRadius * 2,0});
 
-        if((*it)->getLocal().y > worldRadius)
-            (*it)->movement({0, -worldRadius * 2});
+        if(it->getLocal().y > worldRadius)
+            it->movement({0, -worldRadius * 2});
 
-        if((*it)->getLocal().y < -worldRadius)
-            (*it)->movement({0, worldRadius * 2});
+        if(it->getLocal().y < -worldRadius)
+            it->movement({0, worldRadius * 2});
     }
-}
-
-void DecalManager::eofUpdate(float fElapsedTime, olc::vf2d movement){
-    Manager<Decoration>::eofUpdate(fElapsedTime, movement);
 }
 
 void DecalManager::makeRender(){

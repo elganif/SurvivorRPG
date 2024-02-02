@@ -1,67 +1,8 @@
 #ifndef ENGINE_H_INCLUDED
 #define ENGINE_H_INCLUDED
 
-class Menu;
-class gameClock {
-    int hours = 0;
-    int minutes = 0;
-    int seconds = 0;
-    float fractions = 0;
-    public:
-    gameClock() = default;
-    gameClock(float t) : fractions(t){ run(0);}
-    void operator += (const float& t) {run(t);}
-
-    void run(float time){
-        fractions += time;
-        while (fractions >= 1.0f){
-            fractions -= 1.0f;
-            seconds++;
-        }
-        while(seconds >= 60){
-            seconds -= 60;
-            minutes++;
-        }
-        while(minutes>= 60){
-            minutes -= 60;
-            hours++;
-        }
-    }
-
-    std::string print(){
-        std::string out = "";
-
-        enum time {MM,HH};
-        time ts;
-        if (minutes > 0)
-            ts = MM;
-        if (hours > 0)
-            ts = HH;
-
-        std::string temp;
-
-        /// starting at the largest time that is greater than 0 assemble the string.
-        /// After the starting point always include all smaller steps (don't break out of cases)
-        switch(ts){
-        case HH:
-            out += std::to_string(hours) + ":";
-        case MM:
-            temp = std::to_string(minutes);
-            if (temp.length() == 1){
-                temp = "0" + temp + ":";
-            }
-            out += temp;
-        default:
-            temp = std::to_string(seconds);
-            if (temp.length() == 1){
-                temp = "0" + temp;
-            }
-            out += temp + std::to_string(fractions).substr(1);
-        }
-        return out;
-    };
-};
-
+class Screen;
+class UIContainer;
 
 class GameWorld{
 private:
@@ -70,8 +11,10 @@ private:
     float worldRadius;
 
     bool running = false;
-    gameClock worldTime;
-    float engineTime = 0.0f;
+    std::chrono::_V2::steady_clock::time_point epochTime;
+    std::chrono::time_point<std::chrono::_V2::steady_clock> frameTime;
+
+    float engineTime = 0;
     float tickSize = 1.0f/60.0f;
     int maxTicks = 5;
 
@@ -82,7 +25,7 @@ private:
     std::unique_ptr<ProjectileManager> bulletList;
     std::list<std::shared_ptr<Projectile>> bullets;
 
-
+    std::unique_ptr<Screen> HUD;
 
 public:
     GameWorld(float worldSize,olc::PixelGameEngine* game);

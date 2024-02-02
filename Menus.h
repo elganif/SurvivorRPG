@@ -3,137 +3,127 @@
 struct Rectangle; // from Rectangle.h
 
 class UI{
-
     protected:
-    olc::PixelGameEngine* srpg;
-    std::shared_ptr<olc::Sprite> sprite = nullptr;
-    olc::vi2d sides;
-
+    std::unique_ptr<olc::Sprite> sprite = nullptr;
+    std::unique_ptr<olc::Decal> decal = nullptr;
+    struct theme{
+        olc::Pixel text;
+        olc::Pixel bg;
+        olc::Pixel border;
+        olc::Pixel highlight;
+    };
+    olc::PixelGameEngine* game;
+    olc::vf2d area;
+    olc::vi2d borderZone = {1,1};
+    theme colours = {olc::MAGENTA,olc::DARK_MAGENTA,olc::MAGENTA,olc::WHITE};
     public:
-    UI(olc::PixelGameEngine* game, olc::vi2d area):srpg(game),sides(area){
-        sprite = std::make_shared<olc::Sprite>(sides.x,sides.y);
-    }
+    UI(olc::PixelGameEngine* gameObj, olc::vf2d sides);
     virtual ~UI() = default;
-    virtual bool update() = 0;
-    virtual olc::vi2d prepareRender() = 0;
-    virtual std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs) = 0;
 
-    olc::vi2d getSize(){return sides;}
+    virtual bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea) = 0;
+    virtual void draw(olc::vf2d tl, olc::vf2d drawArea) = 0;
+    virtual void drawSprite() = 0;
+
+    void setTheme(olc::Pixel textColour,olc::Pixel background,olc::Pixel border,olc::Pixel highlight);
+    void setTheme(theme newTheme);
+
+    void resize(olc::vf2d newSize);
+    olc::vi2d getSize() {return area;};
+
+
+    enum ALIGN {LEFT,JUST,RIGHT};
 };
 
-class Container : public UI {
-protected:
-    struct UIcomponent {
-        std::unique_ptr<UI> item;
-        olc::vi2d pos;
-    };
-    std::vector<UIcomponent> components;
-
+class UIContainer : public UI {
 public:
-    enum LAYOUT {VERTICAL, ARRANGED};
+    enum LAYOUT {VERT,HORIZ,MANUAL};
 protected:
+    struct component {
+        std::shared_ptr<UI> item = nullptr;
+        olc::vf2d location;
+        olc::vf2d area;
+    };
+    std::vector<component> components;
     LAYOUT type;
 
-    olc::vi2d borderZone = {0,0};
-
 public:
-    Container(olc::PixelGameEngine* game, olc::vi2d area,LAYOUT layout = VERTICAL);
-    virtual ~Container() = default;
+    UIContainer(olc::PixelGameEngine* gameObj,olc::vf2d sides,LAYOUT layout = MANUAL);
+    virtual ~UIContainer() = default;
 
-    void addItem(std::unique_ptr<UI> element,olc::vi2d position = {0,0});
-    bool update();
-    virtual olc::vi2d prepareRender();
-    virtual std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
-    void drawNewBackground();
+    void resize(olc::vf2d newSize);
+    void drawSprite();
+    void setTheme(olc::Pixel textColour,olc::Pixel background,olc::Pixel border,olc::Pixel highlight);
+    void setTheme(theme newTheme);
 
+    bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
+    void draw(olc::vf2d tl, olc::vf2d area);
+
+    void insert(std::unique_ptr<UI>& container,olc::vf2d loc,olc::vf2d coverage,int order = -1);
+    void addContainer(std::unique_ptr<UIContainer>& container,olc::vf2d loc,olc::vf2d coverage,int order = -1);
+    void addTitle(std::string name, int fontSize,olc::vi2d spriteSize = {-1,-1},int order = -1);
+    void addButton(std::string name,std::function<void()> task,olc::vi2d spriteSize = {-1,-1},int order = -1);
+    void addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment = UI::LEFT, olc::vi2d spriteSize = {-1,-1},int order = -1);
+    void updateLayout();
+};
+
+class Screen : public UIContainer {
 private:
-    olc::vi2d prepareVertRender();
-    olc::vi2d prepareArrangedRender();
+uint8_t spriteLayer = 0;
+public:
+    Screen(olc::PixelGameEngine* gameObj,uint8_t drawLayer);
+    ~Screen() = default;
+    void display(srpg_data::controls& inputs);
+
 };
 
 class Element : public UI {
-
 public:
-    Element(olc::PixelGameEngine* game, olc::vi2d area):UI(game,area){
-        sprite = std::make_shared<olc::Sprite>(sides.x,sides.y);
-    }
+    Element(olc::PixelGameEngine* gameObj,olc::vf2d sides,theme colour);
     virtual ~Element() = default;
-};
 
-class Menu : public Container {
-    olc::vi2d center;
+    virtual bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
+    virtual void draw(olc::vf2d tl, olc::vf2d drawSize);
 
-    public:
-
-    Menu(olc::PixelGameEngine* game, olc::vi2d centerP, olc::vi2d area = {1,1});
-    ~Menu() = default;
-    void render(srpg_data::controls& inputs);
-
+    virtual void drawSprite() = 0;
 };
 
 class TitlePlate : public Element {
+protected:
     std::string name;
     int magnitude;
     public:
-    TitlePlate(olc::PixelGameEngine* game,std::string name, olc::vf2d padding,int fontSize);
-    ~TitlePlate(){};
-
-    bool update();
-    olc::vi2d prepareRender();
-    std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
-
+    TitlePlate(olc::PixelGameEngine* gameObj,theme colour,std::string name, olc::vf2d padding,int fontSize);
+    ~TitlePlate() = default;
+    void drawSprite();
 };
 
-class Button : public Element {
+class Button : public Element
+{
     std::string name;
     std::function<void()> execute;
+    olc::vf2d textCorner;
+    bool highlighted = false;
 
     public:
-    Button(olc::PixelGameEngine* game,std::string name, olc::vf2d area,std::function<void()> task);
-    ~Button(){};
+    Button(olc::PixelGameEngine* gameObj,theme colour, std::string name, olc::vf2d area,std::function<void()> task);
+    ~Button() = default;
 
-    bool update();
-    olc::vi2d prepareRender();
-    std::shared_ptr<olc::Sprite> onDisplay(srpg_data::controls& inputs);
+    bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
+    void draw(olc::vf2d tl, olc::vf2d drawSize);
+    void drawSprite();
 
 };
 
+class DynamicText : public Element
+{
+    std::function<std::string()> stringDisplay;
 
-class Panel : public Container{
- private:
-    olc::vi2d tl;
+    ALIGN align;
 public:
-    //Panel(olc::PixelGameEngine* game,int left,int top,int right,int bottom);
-    Panel(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
-
-    ~Panel()= default;
-
-    void render(srpg_data::controls& inputs);
-
+    DynamicText(olc::PixelGameEngine* gameObj,theme colour, olc::vf2d area, std::function<std::string()> task,ALIGN alignment = UI::LEFT);
+    ~DynamicText() = default;
+    void draw(olc::vf2d tl, olc::vf2d drawSize);
+    void drawSprite();
 };
 
-class hudDisplay : public Element {
-public:
-    hudDisplay(olc::PixelGameEngine* game,olc::vf2d area) : Element(game,area){}
-    virtual ~hudDisplay() = default;
-    virtual bool update() = 0;
-    virtual void onDisplay() = 0;
-};
-
-class textDisplay : public Element{
-    textDisplay(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
-    ~textDisplay() = default;
-
-    void onDisplay();
-
-};
-class valueBar : public Element{
-public:
-    valueBar(olc::PixelGameEngine* game,olc::vi2d topL ,olc::vi2d area);
-    ~valueBar() = default;
-
-    bool update();
-    void onDisplay();
-
-};
 #endif // MENUS_H_INCLUDED
