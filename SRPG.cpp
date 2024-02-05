@@ -300,12 +300,14 @@ public:
             menuDisplay[TITLE]->display(inputs);
             SetDrawTarget(nullptr);
         }
-//        SetDrawTarget(srpg_data::renderLayerMenu);
-//        std::list<std::shared_ptr<Entity>> closeTest;
-//        srpg_data::gameObjects->getClosest(inputs.target, 5,closeTest);
-//        for(auto ent = closeTest.begin(); ent != closeTest.end();ent++)
-//            srpg_data::viewer->DrawLine((*ent)->getLocal(),inputs.target);
 
+        if(gamePlay){
+        SetDrawTarget(srpg_data::renderLayerMenu);
+        std::list<std::shared_ptr<Entity>> closeTest;
+        srpg_data::gameObjects->getFoes(inputs.target,20, 5,closeTest,QuadTree::WEAK);
+        for(auto ent = closeTest.begin(); ent != closeTest.end();ent++)
+            srpg_data::viewer->DrawLine((*ent)->location(),inputs.target);
+        }
 
 
         switch (state.game){

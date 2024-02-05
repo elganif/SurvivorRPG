@@ -138,8 +138,8 @@ void FoeManager::update(float fElapsedTime,olc::vf2d worldMove)
             continue;
         }
         /// if foes are too far from player teleport them to opposite side
-        if((*foe)->getLocal().mag2() > worldRadius * worldRadius){
-            (*foe)->movement((*foe)->getLocal().norm() * worldRadius * -2);
+        if((*foe)->location().mag2() > worldRadius * worldRadius){
+            (*foe)->movement((*foe)->location().norm() * worldRadius * -2);
         }
         (*foe)->update(fElapsedTime,worldMove);
         foe++; /// iteration
@@ -227,7 +227,7 @@ void DecalManager::initalize(){
         bool valid = true;
         float toxcity = 0.0;
         for(auto const& blade : items){
-            float distance = (attempting - blade->getLocal()).mag();
+            float distance = (attempting - blade->location()).mag();
             if(distance < grassSize * 2){
                 valid = false;
                 break;
@@ -256,16 +256,16 @@ void DecalManager::update(float fElapsedTime, olc::vf2d worldMove){
     for(auto it : items ){
         it->update(fElapsedTime,worldMove);
 
-        if(it->getLocal().x > worldRadius)
+        if(it->location().x > worldRadius)
             it->movement({-worldRadius * 2,0});
 
-        if(it->getLocal().x < -worldRadius)
+        if(it->location().x < -worldRadius)
             it->movement({worldRadius * 2,0});
 
-        if(it->getLocal().y > worldRadius)
+        if(it->location().y > worldRadius)
             it->movement({0, -worldRadius * 2});
 
-        if(it->getLocal().y < -worldRadius)
+        if(it->location().y < -worldRadius)
             it->movement({0, worldRadius * 2});
     }
 }

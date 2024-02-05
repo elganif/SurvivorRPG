@@ -28,14 +28,14 @@ void UI::setTheme(olc::Pixel textColour,olc::Pixel background,olc::Pixel border,
 void UI::setTheme(theme newTheme)
 {
     colours = newTheme;
-    drawSprite();
+    updateSprite();
     decal->Update();
 }
 
 /// class Container
 UIContainer::UIContainer(olc::PixelGameEngine* gameObj,olc::vf2d sides,LAYOUT layout): UI(gameObj,sides),type(layout)
 {
-    drawSprite();
+    updateSprite();
 }
 
 bool UIContainer::update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
@@ -57,7 +57,7 @@ void UIContainer::draw(olc::vf2d tl, olc::vf2d drawArea)
     game->DrawDecal(tl,decal.get(),scale);
 }
 
-void UIContainer::drawSprite()
+void UIContainer::updateSprite()
 {
     olc::Sprite* oldDrawTarget = game->GetDrawTarget();
     game->SetDrawTarget(sprite.get());
@@ -66,7 +66,7 @@ void UIContainer::drawSprite()
     game->SetDrawTarget(oldDrawTarget);
 }
 
-void UIContainer::addTitle(std::string name,int fontSize,olc::vi2d spriteSize,int order)
+void UIContainer::addTitle(std::string name,int fontSize,olc::vi2d spriteSize,int index)
 {
 
     olc::vf2d location = {0,0};
@@ -77,10 +77,10 @@ void UIContainer::addTitle(std::string name,int fontSize,olc::vi2d spriteSize,in
         spriteSize.y = fontSize * 8 + borderZone.y * 2;
     }
     std::unique_ptr<UI> temp = std::make_unique<TitlePlate>(game,colours,name,spriteSize,fontSize);
-    insert(temp,location,spriteSize, order);
+    insert(temp,index,location,spriteSize );
 }
 
-void UIContainer::addButton(std::string name,std::function<void()> task,olc::vi2d spriteSize,int order)
+void UIContainer::addButton(std::string name,std::function<void()> task,olc::vi2d spriteSize,int index)
 {
     if(spriteSize.x == -1){
         spriteSize.x = area.x - (borderZone.x * 2);
@@ -91,10 +91,16 @@ void UIContainer::addButton(std::string name,std::function<void()> task,olc::vi2
     olc::vi2d location = borderZone;
 
     std::unique_ptr<UI> temp = std::make_unique<Button>(game,colours,name,spriteSize,task);
-    insert(temp,location,spriteSize, order);
+    insert(temp, index,location,spriteSize);
 }
 
-void UIContainer::addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment,olc::vi2d spriteSize,int order)
+void UIContainer::addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment,olc::vf2d location,olc::vi2d spriteSize)
+{
+    std::unique_ptr<UI> temp = std::make_unique<DynamicText>(game,colours,spriteSize,task,alignment);
+    insert(temp,components.size(),location,spriteSize);
+}
+
+void UIContainer::addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment,int index,olc::vi2d spriteSize)
 {
     if(spriteSize.x == -1){
         spriteSize.x = area.x - (borderZone.x * 2);
@@ -105,28 +111,31 @@ void UIContainer::addDynamicText(std::function<std::string()> task,int maxLength
     olc::vi2d location = borderZone;
 
     std::unique_ptr<UI> temp = std::make_unique<DynamicText>(game,colours,spriteSize,task,UI::RIGHT);
-    insert(temp,location,spriteSize, order);
+    insert(temp, index,location,spriteSize);
 }
 
-void UIContainer::addContainer(std::unique_ptr<UIContainer>& container,olc::vf2d loc,olc::vf2d coverage,int order)
+
+void UIContainer::addContainer(std::unique_ptr<UIContainer>& container,olc::vf2d loc,olc::vf2d coverage,int index)
 {
     std::unique_ptr<UI> contain = std::move(container);
-    insert(contain,loc,coverage,order);
-
+    insert(contain,index,loc,coverage);
 }
 
-void UIContainer::insert(std::unique_ptr<UI>& object,olc::vf2d location,olc::vf2d coverage, int order)
+/// Adds objects to the internal data strctures. Private method called by add___() functions.
+void UIContainer::insert(std::unique_ptr<UI>& object, int index,olc::vf2d location,olc::vf2d coverage)
 {
     std::shared_ptr<UI> compObj = std::move(object);
-    if(order <= -1 || order >= components.size()){
+    if(index <= -1 || index >= components.size()){
         components.push_back({compObj,location,coverage});
     } else {
-        components.insert(components.begin() + order,{compObj,location,coverage});
+        components.insert(components.begin() + index,{compObj,location,coverage});
     }
     if(type == HORIZ || type == VERT)
         updateLayout();
 }
 
+/// When using automatic horizontal or vertical layouts this will arrange items through the visual space of the container.
+/// Private function called by insert
 void UIContainer::updateLayout()
 {
     int numItem = components.size();
@@ -211,11 +220,11 @@ void Element::draw(olc::vf2d tl, olc::vf2d drawSize)
 TitlePlate::TitlePlate(olc::PixelGameEngine* game,theme colour,std::string title, olc::vf2d sides,int fontSize = 1)
                 :Element(game,sides,colour),name(title),magnitude(fontSize)
 {
-    drawSprite();
+    updateSprite();
     decal->Update();
 }
 
-void TitlePlate::drawSprite()
+void TitlePlate::updateSprite()
 {
     olc::Sprite* oldTarget = game->GetDrawTarget();
     game->SetDrawTarget(sprite.get());
@@ -234,45 +243,41 @@ void TitlePlate::drawSprite()
 Button::Button(olc::PixelGameEngine* gameObj,theme colour, std::string title, olc::vf2d sides,std::function<void()> task)
                 :Element(gameObj,sides,colour),name(title),execute(task)
 {
-    drawSprite();
+    updateSprite();
     decal->Update();
 }
 
 bool Button::update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
 {
+    /// check if the button was clicked and execute its function.
     if(Rectangle({0,0},drawArea).contains(inputs.UItarget) && inputs.mainAttack){
         execute();
-        return true;
     }
+    bool updated = false;
+    /// We check if the mouse of selection has changed since last frame and update highlighting if changed.
     if(Rectangle({0,0},drawArea).contains(inputs.UItarget) != highlighted){
         highlighted = !highlighted;
 
+        /// record old draw target and set buttons sprite for drawing.
         olc::Sprite* oldTarget = game->GetDrawTarget();
         game->SetDrawTarget(sprite.get());
 
+        /// we are drawing because its changed, set the colour we need based on if its highlighted or not
         olc::Pixel newBorder = highlighted ? colours.highlight : colours.border;
         game->DrawRect(0,0,area.x-1,area.y-1,newBorder);
         decal->Update();
 
+        /// return draw target to prior state
         game->SetDrawTarget(oldTarget);
-        draw(tl,drawArea);
-        return true;
+
+        updated = true;
     }
+    /// draw the button to the specified area, return if the sprite was updated or not.
     draw(tl,drawArea);
-    return false;
+    return updated;
 }
 
-void Button::draw(olc::vf2d tl, olc::vf2d drawSize)
-{
-    olc::vf2d scale = drawSize / area;
-
-    float textScale = std::min(scale.x,scale.y);
-    game->DrawDecal(tl,decal.get(),scale);
-    game->DrawStringDecal(tl + (textCorner*textScale + (area/2) * scale),name,colours.text,{textScale,textScale});
-
-}
-
-void Button::drawSprite()
+void Button::updateSprite()
 {
     olc::Sprite* oldDraw = game->GetDrawTarget();
 
@@ -286,12 +291,35 @@ void Button::drawSprite()
     game->SetDrawTarget(oldDraw);
 }
 
+void Button::draw(olc::vf2d tl, olc::vf2d drawSize)
+{
+    olc::vf2d scale = drawSize / area;
+
+    float textScale = std::min(scale.x,scale.y);
+    game->DrawDecal(tl,decal.get(),scale);
+    game->DrawStringDecal(tl + (textCorner*textScale + (area/2) * scale),name,colours.text,{textScale,textScale});
+
+}
+
+
 /// class DynamicText
 DynamicText::DynamicText(olc::PixelGameEngine* gameObj,theme colour, olc::vf2d sides,std::function<std::string()> task,ALIGN alignment)
                 :Element(gameObj,sides,colour),align(alignment), stringDisplay(task)
 {
-    drawSprite();
+    updateSprite();
     decal->Update();
+}
+
+void DynamicText::updateSprite()
+{
+    olc::Sprite* oldDraw = game->GetDrawTarget();
+
+    game->SetDrawTarget(sprite.get());
+    game->Clear(colours.bg);
+    game->DrawRect(0,0,area.x-1,area.y-1,colours.border);
+    decal->Update();
+
+    game->SetDrawTarget(oldDraw);
 }
 
 void DynamicText::draw(olc::vf2d tl, olc::vf2d drawSize)
@@ -318,19 +346,5 @@ void DynamicText::draw(olc::vf2d tl, olc::vf2d drawSize)
     /// Draw our elements to screen
     game->DrawDecal(tl,decal.get(),scale);
     game->DrawStringDecal(tl + (textCorner*textScale),output,colours.text,{textScale,textScale});
-
 }
-
-void DynamicText::drawSprite()
-{
-    olc::Sprite* oldDraw = game->GetDrawTarget();
-
-    game->SetDrawTarget(sprite.get());
-    game->Clear(colours.bg);
-    game->DrawRect(0,0,area.x-1,area.y-1,colours.border);
-    decal->Update();
-
-    game->SetDrawTarget(oldDraw);
-}
-
 

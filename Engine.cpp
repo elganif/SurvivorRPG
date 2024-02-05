@@ -69,8 +69,8 @@ bool GameWorld::run(float fElapsedTime, srpg_data::controls& inputs)
         olc::vf2d worldMove = {0,0};
         if(mainChar->isValid()){
             /// slide world and mainChar to keep player at center
-            worldMove = -mainChar->getLocal();
-            mainChar->placement({0,0});
+            worldMove = -mainChar->location();
+            mainChar->location({0,0});
 
         /// move world objects
             srpg_data::viewer->MoveWorldOffset(worldMove);
@@ -120,7 +120,7 @@ void GameWorld::draw()
     srpg_data::gameObjects->getOverlapItems(screen,renderables);
 
     // Sort the list of items needing to be rendered ordered from top of screen to bottom of screen.
-    renderables.sort([](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s){return (f->getLocal().y+f->getSize()) < (s->getLocal().y+s->getSize()); });
+    renderables.sort([](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s){return (f->location().y+f->getSize()) < (s->location().y+s->getSize()); });
     for(auto it = renderables.begin();it!= renderables.end();it++){
         (*it)->render();
     }

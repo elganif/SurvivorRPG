@@ -13,43 +13,44 @@
 /// Declaration of static uuid variable. Used in generation of a unique identifier for each entity created.
 std::atomic_uint32_t Entity::uuid;
 
-Entity::Entity(olc::vf2d spawn, float newSize):location(spawn),entSize(newSize),entID(uuid++){}
+Entity::Entity(olc::vf2d spawn, float newSize):_location(spawn),entSize(newSize),entID(uuid++){}
 
-/// sets an Entities postion in the world, not moving through space inbetween.
-void Entity::placement(olc::vf2d destiny)
+/// Move Entity to specified postion.
+olc::vf2d Entity::location(olc::vf2d destiny)
 {
-    location = destiny;
+    _location = destiny;
     if(hostTreeNode){
         hostTreeNode->validateEnt(hostTreeNode,myself);
     }
+    return _location;
 }
 
-/// Moves Entity through space in the world (full functionality TBD)
+/// Moves Entity a specified distance from current location.
 void Entity::movement(olc::vf2d destiny)
 {
-    placement(location + destiny);
+    location(_location + destiny);
 }
 
 /// frame update for Entity
-void Entity::update(float fElapsedTime,olc::vf2d worldMove)
-{
-    movement(worldMove);
-}
-
-//void Entity::eofUpdate(float fElapsedTime, olc::vf2d worldMove){
-//    float friction = 0.75;
-//
-//    olc::vf2d totalDist = walkingDirection + momentum;
-//    if(totalDist.mag2() > 1.0f){
-//     Set max speed limit currently half a screen per second.
-//        totalDist = totalDist.norm();
-//    }
-//    momentum -= momentum * fElapsedTime;
-//    momentum += totalDist * fElapsedTime;
-//    momentum *= friction;
-//    movement((totalDist * fElapsedTime) + worldMove);
-//    walkingDirection = {0,0};
+//void Entity::update(float fElapsedTime,olc::vf2d worldMove)
+//{
+//    movement(worldMove);
 //}
+
+void Entity::update(float fElapsedTime, olc::vf2d worldMove){
+    float friction = 0.75;
+
+    olc::vf2d totalDist = walkingDirection + momentum;
+    if(totalDist.mag2() > 1.0f){
+     /// Set max speed limit currently half a screen per second.
+        totalDist = totalDist.norm();
+    }
+    momentum -= momentum * fElapsedTime;
+    momentum += totalDist * fElapsedTime;
+    momentum *= friction;
+    movement((totalDist * fElapsedTime) + worldMove);
+    walkingDirection = {0,0};
+}
 
 
 /// Used to create entity decal out of sprite passed in
@@ -97,16 +98,16 @@ game->SetDrawTarget(sprite.get());
 
 /// gets a rectangular collsion box for quick checking if entities are close enough to interact
 Rectangle Entity::getBoxCollider(){
-    return Rectangle({location.x - (entSize),location.y - (entSize)},{entSize*2.0f,entSize*2.0f});
+    return Rectangle({_location.x - (entSize), _location.y - (entSize)},{entSize*2.0f,entSize*2.0f});
 }
 
 /// rotates a point around center of the entity
 olc::vf2d Entity::rotatePt(olc::vf2d point,olc::vf2d angle){
-    olc::vf2d updatedpoint = point - location;
+    olc::vf2d updatedpoint = point - _location;
 
     updatedpoint.x = (point.y * angle.x) + (point.x * angle.y);
     updatedpoint.y = -(point.x * angle.x) + (point.y * angle.y);
-    updatedpoint += location;
+    updatedpoint += _location;
     return updatedpoint;
 }
 
@@ -130,7 +131,7 @@ float Npc::getHP(){
 
 void Npc::update(float fElapsedTime,olc::vf2d worldMove){
     if (isValid()) {
-        walkingDirection = -getLocal().norm() * speed;
+        walkingDirection = -location().norm() * speed;
     }
     float friction = 0.75;
 
@@ -156,12 +157,12 @@ void Npc::onOverlap(std::shared_ptr<Entity> other){
         return;
     if(other->whoAreYou() == HERO){
         //Collide with Hero
-        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
+        std::dynamic_pointer_cast<Hero>(other)->bump(location(),entSize);
         return;
     }
     if(other->whoAreYou() == NPC){
         //Collide with Friendly
-        std::dynamic_pointer_cast<Npc>(other)->bump(getLocal(),entSize);
+        std::dynamic_pointer_cast<Npc>(other)->bump(location(),entSize);
         return;
     }
     if(other->whoAreYou() == PROJECTILE){
@@ -173,7 +174,7 @@ void Npc::onOverlap(std::shared_ptr<Entity> other){
 
 void Npc::bump(olc::vf2d otherLoc,float otherSize){
     //srpg_data::timers->start("bumpin");
-    olc::vf2d entRelLoc = (getLocal() - otherLoc); // coordinate Dist
+    olc::vf2d entRelLoc = (location() - otherLoc); // coordinate Dist
     float collideDist = (otherSize + entSize);
 
     if(collideDist * collideDist > entRelLoc.mag2()){
@@ -191,7 +192,7 @@ void Npc::render(){
 
     // debug collider
     if(srpg_data::debugTools){
-        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_RED);
+        srpg_data::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_RED);
     }
 }
 
@@ -229,10 +230,10 @@ void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg_data::controls& i
     while( projectileCooldown >= 0){
         projectileCooldown -= 1/fireRate;
         std::list<std::shared_ptr<Entity>> targets;
-        srpg_data::gameObjects->getFoes(getLocal(),bulletLife*bulletSpeed,fireCount, targets, QuadTree::CLOSE);
+        srpg_data::gameObjects->getFoes(location(),bulletLife*bulletSpeed,fireCount, targets, QuadTree::CLOSE);
 
         for(auto ent = targets.begin(); ent != targets.end(); ent++){
-            fireProjectile((*ent)->getLocal());
+            fireProjectile((*ent)->location());
         }
     }
     movement(walkingDirection * fElapsedTime);
@@ -240,7 +241,7 @@ void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg_data::controls& i
 
 bool Hero::fireProjectile(const olc::vf2d& target){
 
-        bulletMan->spawn(getLocal(),target,pSize);
+        bulletMan->spawn(location(),target,pSize);
 
         return true;
 }
@@ -254,11 +255,11 @@ void Hero::onOverlap(std::shared_ptr<Entity> other){
         return;
     if(other->whoAreYou() == HERO){
         //Collide with Hero
-        std::dynamic_pointer_cast<Hero>(other)->bump(getLocal(),entSize);
+        std::dynamic_pointer_cast<Hero>(other)->bump(location(),entSize);
     }
     if(other->whoAreYou() == NPC){
         //Collide with Friendly
-        std::dynamic_pointer_cast<Npc>(other)->bump(getLocal(),entSize);
+        std::dynamic_pointer_cast<Npc>(other)->bump(location(),entSize);
     }
     if(other->whoAreYou() == PROJECTILE){
         // subtract projectiles damage from hp
@@ -279,7 +280,7 @@ void Hero::render(){
 
     //collider Debug
     if(srpg_data::debugTools){
-        srpg_data::viewer->DrawCircle(getLocal(),entSize,olc::VERY_DARK_BLUE);
+        srpg_data::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_BLUE);
     }
     //srpg_data::viewer->DrawRect(getBoxCollider().tl,getBoxCollider().sides);
 }
@@ -347,7 +348,7 @@ void Projectile::kill()
 /// What does a projectile do when it hits another entity
 float Projectile::impact(Entity* other)
 {
-    if(isValid() && (getLocal() - other->getLocal()).mag2() <= other->getSize() * other->getSize()){
+    if(isValid() && (location() - other->location()).mag2() <= other->getSize() * other->getSize()){
         hits--;
         return 10.0f;// Damage for now, eventualy should be struct of effects?
     }
@@ -368,7 +369,7 @@ void Projectile::render()
 
     olc::vf2d proLoc = rotatePt(olc::vf2d( entSize*0.5, entSize*0.5),direction.norm());
 
-    srpg_data::viewer->DrawRotatedDecal(getLocal(),image.get(),rad,{entSize/2.0f,shape/2.0f});
+    srpg_data::viewer->DrawRotatedDecal(location(),image.get(),rad,{entSize/2.0f,shape/2.0f});
 }
 
 

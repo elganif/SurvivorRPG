@@ -14,13 +14,12 @@ class Entity
 {
 private:
     /// Private variables require derived classes to use the accessor methods that ensure quadtree updates are called.
-    olc::vf2d location;
+    olc::vf2d _location;
 
     /// for function interactions with QuadTree used in collision detection and rendering.
     QuadTree* hostTreeNode = nullptr;
     std::list<std::shared_ptr<Entity>>::iterator myself;
 
-    /// Only to be used by isValid() function
     virtual bool whatIsLife() = 0;
 
 
@@ -62,20 +61,17 @@ protected:
     virtual void render() = 0;
     virtual TYPE whoAreYou() = 0;
 
-    //virtual void eofUpdate(float fElapsedTime, olc::vf2d worldMove);
-
     bool isValid();
     bool operator == (const Entity& other) const;
     bool operator != (const Entity& other) const;
 
-    void setTreeLocation(QuadTree* hostTreeNode, std::list<std::shared_ptr<Entity>>::iterator ent);
+    virtual void setTreeLocation(QuadTree* hostTreeNode, std::list<std::shared_ptr<Entity>>::iterator ent) final;
 
-
-    void placement(olc::vf2d destiny);
+    virtual olc::vf2d location(olc::vf2d destiny) final;
+    virtual olc::vf2d location() final {return _location;}
     void movement(olc::vf2d destiny);
     virtual void update(float fElapsedTime,olc::vf2d worldMove);
 
-    olc::vf2d getLocal(){return location;}
     int getUID(){return entID;}
     float getSize(){return entSize;}
     float getSpeed(){return speed;}

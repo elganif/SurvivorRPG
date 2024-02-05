@@ -63,7 +63,6 @@ class QuadTree
 
 class Profiler {
 public:
-
     std::string defaultName = "CoreFrame";
     int frameCounter = 0;
     Profiler();
@@ -71,10 +70,12 @@ public:
     struct Event{
         std::string identity;
         int frameNum;
+        int openCount = 1;
         std::chrono::_V2::steady_clock::time_point startT;
         std::chrono::_V2::steady_clock::time_point stopT;
-        float passedTime(){ return std::chrono::duration<float>(stopT - startT).count();}
-        Event(std::string name,int frameOn):identity(name),frameNum(frameOn) {startT = std::chrono::_V2::steady_clock::now();}
+
+        Event(std::string name,int frameOn):identity(name),frameNum(frameOn) {startT = std::chrono::_V2::steady_clock::now(); }
+        float passedTime(){ return std::chrono::duration<float>(stopT - startT).count(); }
     };
 
     std::unordered_map<std::string, std::list<Event>> events;
@@ -82,7 +83,7 @@ public:
     void frameMark();
     void start(std::string timerID);
     float stop(std::string timerID);
-    bool running(std::string timerID);
+    //bool running(std::string timerID);
 
     void drawDebug(olc::PixelGameEngine* game);
 };

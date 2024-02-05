@@ -1,8 +1,9 @@
 #ifndef MENUS_H_INCLUDED
 #define MENUS_H_INCLUDED
-struct Rectangle; // from Rectangle.h
+//struct Rectangle; // from Rectangle.h
 
-class UI{
+class UI
+{
     protected:
     std::unique_ptr<olc::Sprite> sprite = nullptr;
     std::unique_ptr<olc::Decal> decal = nullptr;
@@ -22,7 +23,7 @@ class UI{
 
     virtual bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea) = 0;
     virtual void draw(olc::vf2d tl, olc::vf2d drawArea) = 0;
-    virtual void drawSprite() = 0;
+    virtual void updateSprite() = 0;
 
     void setTheme(olc::Pixel textColour,olc::Pixel background,olc::Pixel border,olc::Pixel highlight);
     void setTheme(theme newTheme);
@@ -34,7 +35,8 @@ class UI{
     enum ALIGN {LEFT,JUST,RIGHT};
 };
 
-class UIContainer : public UI {
+class UIContainer : public UI
+{
 public:
     enum LAYOUT {VERT,HORIZ,MANUAL};
 protected:
@@ -51,22 +53,29 @@ public:
     virtual ~UIContainer() = default;
 
     void resize(olc::vf2d newSize);
-    void drawSprite();
+    void updateSprite();
     void setTheme(olc::Pixel textColour,olc::Pixel background,olc::Pixel border,olc::Pixel highlight);
     void setTheme(theme newTheme);
 
     bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
     void draw(olc::vf2d tl, olc::vf2d area);
+    void addContainer(std::unique_ptr<UIContainer>& container,int index = -1,olc::vf2d coverage = {-1,-1});
+    void addContainer(std::unique_ptr<UIContainer>& container,olc::vf2d loc,olc::vf2d coverage,int index = -1);
 
-    void insert(std::unique_ptr<UI>& container,olc::vf2d loc,olc::vf2d coverage,int order = -1);
-    void addContainer(std::unique_ptr<UIContainer>& container,olc::vf2d loc,olc::vf2d coverage,int order = -1);
-    void addTitle(std::string name, int fontSize,olc::vi2d spriteSize = {-1,-1},int order = -1);
-    void addButton(std::string name,std::function<void()> task,olc::vi2d spriteSize = {-1,-1},int order = -1);
-    void addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment = UI::LEFT, olc::vi2d spriteSize = {-1,-1},int order = -1);
+    void addTitle(std::string name, int fontSize,olc::vi2d spriteSize = {-1,-1},int index = -1);
+
+    void addButton(std::string name,std::function<void()> task,olc::vi2d spriteSize = {-1,-1},int index = -1);
+
+    void addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment, int index = -1, olc::vi2d spriteSize = {-1,-1});
+    void addDynamicText(std::function<std::string()> task,int maxLength,ALIGN alignment, olc::vf2d location, olc::vi2d spriteSize = {-1,-1});
+
+private:
+    void insert(std::unique_ptr<UI>& container,int order,olc::vf2d loc,olc::vf2d coverage);
     void updateLayout();
 };
 
-class Screen : public UIContainer {
+class Screen : public UIContainer
+{
 private:
 uint8_t spriteLayer = 0;
 public:
@@ -76,7 +85,8 @@ public:
 
 };
 
-class Element : public UI {
+class Element : public UI
+{
 public:
     Element(olc::PixelGameEngine* gameObj,olc::vf2d sides,theme colour);
     virtual ~Element() = default;
@@ -84,17 +94,18 @@ public:
     virtual bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
     virtual void draw(olc::vf2d tl, olc::vf2d drawSize);
 
-    virtual void drawSprite() = 0;
+    virtual void updateSprite() = 0;
 };
 
-class TitlePlate : public Element {
+class TitlePlate : public Element
+{
 protected:
     std::string name;
     int magnitude;
     public:
     TitlePlate(olc::PixelGameEngine* gameObj,theme colour,std::string name, olc::vf2d padding,int fontSize);
     ~TitlePlate() = default;
-    void drawSprite();
+    void updateSprite();
 };
 
 class Button : public Element
@@ -110,7 +121,7 @@ class Button : public Element
 
     bool update(srpg_data::controls& inputs,olc::vf2d tl, olc::vf2d drawArea);
     void draw(olc::vf2d tl, olc::vf2d drawSize);
-    void drawSprite();
+    void updateSprite();
 
 };
 
@@ -122,8 +133,8 @@ class DynamicText : public Element
 public:
     DynamicText(olc::PixelGameEngine* gameObj,theme colour, olc::vf2d area, std::function<std::string()> task,ALIGN alignment = UI::LEFT);
     ~DynamicText() = default;
+    void updateSprite();
     void draw(olc::vf2d tl, olc::vf2d drawSize);
-    void drawSprite();
 };
 
 #endif // MENUS_H_INCLUDED

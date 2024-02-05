@@ -72,7 +72,7 @@ int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, std::list<s
     switch (targType){
         case CLOSE:
             targMethod = [targetLoc](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
-                                    {return (f->getLocal() - targetLoc).mag2() < (s->getLocal() - targetLoc).mag2(); };
+                                    {return (f->location() - targetLoc).mag2() < (s->location() - targetLoc).mag2(); };
         break;
         case WEAK:
             targMethod = [](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
@@ -105,10 +105,10 @@ void QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg,std::list<s
 
     /// Check entities in the current quad
     for(auto ent = entStored.begin(); ent != entStored.end(); ent++){
-        if ( !(*ent)->whoAreYou() == Entity::NPC ){
+        if ( (*ent)->whoAreYou() != Entity::NPC ){
             continue; /// Not who we are looking for
         }
-        if(( (*ent)->getLocal() - targetLoc).mag2() > range ){
+        if(( (*ent)->location() - targetLoc).mag2() > range ){
             continue; /// ent is out of range
         }
         if(returns.size() >= numTarg && targType( (*ent),returns.back())){
@@ -202,7 +202,7 @@ void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Enti
     return;
 }
 
-
+/// Removal function for expired entities.
 void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
     if(entIT != entStored.end()){
         entStored.erase(entIT);
@@ -212,7 +212,7 @@ void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>:
     return;
 }
 
-/// Debug function to draw all nodes to the screen.
+/// Debug function to draw all nodes to the screen, or to the specified area.
 void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
     if(quadArea.overlaps(area)){
         if(entStored.size() > 0){
@@ -229,7 +229,10 @@ void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
     }
 }
 
-bool QuadTree::clean(){
+/// cleans up the tree clearing any empty nodes.
+/// returns bool indicating if it is clean and can be deleted or if there is any object under that needs to be preserved.
+bool QuadTree::clean()
+{
     bool isClean = entStored.size() == 0;
     for(int i = 0; i < 4; i++){
         if(quads[i]){
@@ -237,28 +240,27 @@ bool QuadTree::clean(){
                 delete quads[i];
                 quads[i] = nullptr;
                 continue;
-            } // else quad contains entities.
+            } /// else sub quad contains entities.
             isClean = false;
         }
     }
     return isClean;
 }
-/// NOTE: I would prefer to find a good way to do these functions without full tree traversal.
-/// There is a potential performance impact due to traversing many empty nodes to gather the information needed.
 
 /// Count of all items in this node and each sub node.
+/// starts with the count of this node, then adds the size of each subquad.
 int QuadTree::size()
 {
     int thisCount = entStored.size();
     for(int i = 0;i < 4;i++){
         thisCount += quads[i] ? quads[i]->size() : 0;
     }
-
     return thisCount;
 }
 
-/// Counts total number of nodes in the tree.
-int QuadTree::activity(){
+/// Counts total number of nodes in the tree. For debugging or performance checking.
+int QuadTree::activity()
+{
     int numQuads = 1;
     for(int i = 0; i < 4; i++){
         numQuads += quads[i] ? quads[i]->activity() : 0;
@@ -266,8 +268,9 @@ int QuadTree::activity(){
     return numQuads;
 }
 
-/// Checks for the deepest node
-int QuadTree::curDepth(){
+/// Checks for the deepest node. for Debugging or performance checking.
+int QuadTree::curDepth()
+{
     int depthCharge = depth;
     for (int i = 0; i < 4; i++){
         if(quads[i]){
@@ -301,30 +304,32 @@ int QuadTree::curDepth(){
         }
     }
 
-
+    /// Create an event and add it at first time in list
     void Profiler::start(std::string timerID)
-    {/// Create an event and add it at first time in list
-
-        events[timerID].push_front(Event(timerID,events[defaultName].front().frameNum));
+    {
+        /// if the list is empty or if the last timer has been closed properly we create new timer.
+        /// this is to handle calls in recursive functions and treat them as a single event until fully closed.
+        if(events[timerID].size() == 0 || events[timerID].front().openCount == 0){
+            events[timerID].push_front(Event(timerID,events[defaultName].front().frameNum));
+        } else {
+            /// increment open Counters on this label.
+            events[timerID].front().openCount++ ;
+        }
     }
 
     /// Update the end time of the front item.
     float Profiler::stop(std::string timerID)
     {
-        if(events[timerID].size() == 0)
-            {return 0;}
+        /// if the event list is empty, or the prior timer is completed we do not want to access or overright stopT so skip and return 0.
+        if(events[timerID].size() == 0 || events[timerID].front().openCount == 0){
+            return 0;
+        }
+        /// record the current stop time, decriment open counter, return the passed time.
         events[timerID].front().stopT = std::chrono::_V2::steady_clock::now();
+        events[timerID].front().openCount-- ;
         return events[timerID].front().passedTime();
     }
 
-    bool Profiler::running(std::string timerID)
-    {
-        if(events.count(timerID)){
-
-            return (events[timerID].front().stopT.time_since_epoch().count() != 0);
-        } /// else
-        return false; /// no such timer listed
-    }
     void Profiler::drawDebug(olc::PixelGameEngine* game)
     {
         start("debug"); /// valuable to know how much time is lost to createing this display.
@@ -367,6 +372,7 @@ int QuadTree::curDepth(){
             if(eventList.size() == 0){
                 continue; /// no need to operate on empty lists
             }
+            /// Check if a timer is being called an excessive number of times. It will still be calculated for times, but on 1 frame will be drawn.
             bool skipExcessiveDraws = false;
             if(eventList.size() >= 100 + events[defaultName].size())
                 skipExcessiveDraws = true;
