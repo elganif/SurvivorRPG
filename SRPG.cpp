@@ -26,16 +26,16 @@ using std::vector;
 using std::list;
 using std::shared_ptr;
 
-std::unique_ptr<QuadTree> srpg_data::gameObjects;
-olc::TransformedView* srpg_data::viewer;
-olc::GamePad* controller = nullptr;
+std::unique_ptr<QuadTree> srpg::gameObjects;
+std::unique_ptr<olc::TransformedView> srpg::viewer;
+std::unique_ptr<olc::GamePad> controller = nullptr;
 
-uint8_t srpg_data::renderLayerFloor;
-uint8_t srpg_data::renderLayerEntities;
-uint8_t srpg_data::renderLayerUI;
-uint8_t srpg_data::renderLayerMenu;
+uint8_t srpg::renderLayerFloor;
+uint8_t srpg::renderLayerEntities;
+uint8_t srpg::renderLayerUI;
+uint8_t srpg::renderLayerMenu;
 
-std::unique_ptr<Profiler> srpg_data::timers;
+std::unique_ptr<Profiler> srpg::timers;
 
 class SurvivorRPG : public olc::PixelGameEngine
 {
@@ -52,9 +52,6 @@ enum MENUS{
 };
 
 std::unordered_map<MENUS, std::unique_ptr<Screen>> menuDisplay;
-//std::unique_ptr<Screen> title = nullptr;
-//std::unique_ptr<Screen> mainMenu = nullptr;
-//std::unique_ptr<Screen> gameOverScreen = nullptr;
 std::unique_ptr<GameWorld> gamePlay = nullptr;
 
 struct STATE{
@@ -67,7 +64,6 @@ struct STATE{
         NONE,
         LOADING,
         PLAY,
-        PAUSED,
         OVER
     };
     MENU menu = MENU::MAIN;
@@ -95,24 +91,24 @@ public:
         //create needed rendering layers back to front
         SetPixelMode(olc::Pixel::MASK);
         Clear(olc::BLANK);
-        srpg_data::renderLayerMenu = CreateLayer();
-        EnableLayer(srpg_data::renderLayerMenu,true);
+        srpg::renderLayerMenu = CreateLayer();
+        EnableLayer(srpg::renderLayerMenu,true);
 
-        srpg_data::renderLayerUI = CreateLayer();
-        EnableLayer(srpg_data::renderLayerUI,true);
+        srpg::renderLayerUI = CreateLayer();
+        EnableLayer(srpg::renderLayerUI,true);
 
-        srpg_data::renderLayerEntities = CreateLayer();
-        EnableLayer(srpg_data::renderLayerEntities,true);
+        srpg::renderLayerEntities = CreateLayer();
+        EnableLayer(srpg::renderLayerEntities,true);
 
-        srpg_data::renderLayerFloor = CreateLayer();
-        EnableLayer(srpg_data::renderLayerFloor,true);
+        srpg::renderLayerFloor = CreateLayer();
+        EnableLayer(srpg::renderLayerFloor,true);
 
 
         screenRatio = (float)ScreenWidth()/(float)ScreenHeight();
         olc::vf2d screentl = {(float)ScreenWidth(),(float)ScreenHeight()};
         olc::vf2d screenscale = {ScreenHeight()/2.0f,ScreenHeight()/2.0f};
-		srpg_data::viewer = new olc::TileTransformedView(screentl,screenscale);
-		srpg_data::viewer->MoveWorldOffset({-1*screenRatio,-1});
+		srpg::viewer = std::make_unique<olc::TileTransformedView>(screentl,screenscale);
+		srpg::viewer->MoveWorldOffset({-1*screenRatio,-1});
 
         // Object inialization
 
@@ -120,7 +116,7 @@ public:
 
         menuDisplay.emplace(GAMEOVER ,constructGameOver());
 
-        srpg_data::timers = std::make_unique<Profiler>();
+        srpg::timers = std::make_unique<Profiler>();
 		return true;
 	}
 
@@ -129,20 +125,20 @@ public:
         olc::vf2d titleArea = {ScreenWidth() * 0.35f, ScreenHeight() *0.2f};
         olc::vf2d titleLoc = olc::vi2d(ScreenWidth() * 0.5f, ScreenHeight() *0.25f) - titleArea/2;
 
-        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg_data::renderLayerMenu);
 
-        std::unique_ptr<UIContainer> title = std::make_unique<UIContainer>(this,titleArea,UIContainer::VERT);
+        std::unique_ptr<UIContainer> title = std::make_unique<UIContainer>(this,titleArea,olc::vi2d(1,2));
         title->setTheme(olc::CYAN ,olc::BLANK ,olc::BLANK ,olc::BLANK );
 
-        title->addTitle("Roles of",3,{(int)titleArea.x,(int)titleArea.y/2});
-        title->addTitle("Survival",3,{(int)titleArea.x,(int)titleArea.y/2});
+        title->addTitle("Roles of",3,{0,0});
+        title->addTitle("Survival",3,{0,1});
 
+        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg::renderLayerMenu);
         screen->addContainer(title,titleLoc,titleArea);
 
         olc::vf2d menuArea = {ScreenWidth() * 0.2f, ScreenHeight() * 0.2f};
         olc::vf2d menuLoc = olc::vf2d(ScreenWidth() *0.5f , ScreenHeight() * 0.6f) - menuArea/2;
 
-        std::unique_ptr<UIContainer> main = std::make_unique<UIContainer>(this,menuArea,UIContainer::VERT);
+        std::unique_ptr<UIContainer> main = std::make_unique<UIContainer>(this,menuArea,olc::vi2d(1,3));
         main->setTheme(olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE );
 
         main->addButton("START",
@@ -153,7 +149,9 @@ public:
                             if(gamePlay){
                             state.game = STATE::GAME::PLAY;
                             state.menu = STATE::MENU::CLOSED;
-                            }});
+                            }}
+                        ,{0,0}
+                            );
 
         main->addButton("RESTART",
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
@@ -161,10 +159,12 @@ public:
                                 state.game = STATE::GAME::PLAY;
                                 state.menu = STATE::MENU::CLOSED;
 
-                            });
+                            }
+                        ,{0,1});
 
         main->addButton("EXIT",
-                        [&]{gameOpen = false;});
+                        [&]{gameOpen = false;}
+                        ,{0,2});
 
         screen->addContainer(main,menuLoc,menuArea);
 
@@ -173,31 +173,37 @@ public:
 
     std::unique_ptr<Screen> constructGameOver(){
         olc::vf2d menuArea = {ScreenHeight() * 0.5f , ScreenHeight() * 0.5f};
-        olc::vf2d menuLoc = olc::vf2d(ScreenWidth() * 0.5f , ScreenHeight() * 0.5f) - menuArea;
+        olc::vf2d menuLoc = olc::vf2d(ScreenWidth() * 0.5f, ScreenHeight() * 0.5f) - (menuArea / 2);
+
+        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg::renderLayerUI);
 
 
-        std::unique_ptr<UIContainer> gameOver = std::make_unique<UIContainer>(this,menuArea,UIContainer::VERT);
+        std::unique_ptr<UIContainer> gameOver = std::make_unique<UIContainer>(this,menuArea,olc::vi2d(1,7));
+        gameOver->setTheme(olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE );
 
-        gameOver->addTitle("GAME",2);
+        gameOver->addTitle("GAME",2,{0,0},{1,2});
 
-        gameOver->addTitle("OVER",2);
+        gameOver->addTitle("OVER",2,{0,2},{1,2});
 
         gameOver->addButton("Main Menu",
                         [&]{gamePlay.reset();
                             state.menu = STATE::MENU::MAIN;
                             state.game = STATE::GAME::NONE;
-                            });
+                            }
+                        ,{0,4});
 
         gameOver->addButton("Restart",
                         [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                             gamePlay->start();
                             state.menu = STATE::MENU::CLOSED;
                             state.game = STATE::GAME::PLAY;
-                            });
+                            }
+                        ,{0,5});
 
-        gameOver->addButton("Exit",[&]{gameOpen = false;});
+        gameOver->addButton("Exit",[&]{gameOpen = false;}
+                        ,{0,6});
 
-        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg_data::renderLayerUI);
+
         screen->addContainer(gameOver,menuLoc,menuArea);
         return screen;
 
@@ -205,11 +211,11 @@ public:
 
 
     // collects key inputs from user and returns The desired actions. ::todo make extendable for more commands, and figure out remapable inputs.
-	void takeInput(srpg_data::controls& inputs)
+	void takeInput(srpg::controls& inputs)
 	{
         bool gamepad;
         if(controller == nullptr || !controller->stillConnected){
-            controller = olc::GamePad::selectWithAnyButton();
+            controller = std::unique_ptr<olc::GamePad>(olc::GamePad::selectWithAnyButton());
             gamepad = false;
         } else {
             gamepad = true;
@@ -219,7 +225,7 @@ public:
 
 	    inputs.mainAttack = GetMouse(olc::Mouse::LEFT).bPressed;
         inputs.rapidFire = GetMouse(olc::Mouse::RIGHT).bHeld;
-        inputs.target = srpg_data::viewer->ScreenToWorld({(float)GetMouseX(),(float)GetMouseY()});
+        inputs.target = srpg::viewer->ScreenToWorld({(float)GetMouseX(),(float)GetMouseY()});
         inputs.UItarget = {(float)GetMouseX(),(float)GetMouseY()};
 
 	    olc::vf2d movement = {0,0};
@@ -239,8 +245,8 @@ public:
             inputs.movement = movement.norm();
         }
         if(gamepad){
-            movement.x = (controller->getAxis(olc::GPAxes::LX)-0.5f) * -2;
-            movement.y = (controller->getAxis(olc::GPAxes::LY)-0.5f) * -2;
+            movement.x = (controller->getAxis(olc::GPAxes::LX)-0.5f) * 2;
+            movement.y = (controller->getAxis(olc::GPAxes::LY)-0.5f) * 2;
             if(movement.x != 0.0f || movement.y !=0.0f){
                 inputs.movement = movement.mag2() < 1 ? movement : movement.norm();
             }
@@ -250,81 +256,75 @@ public:
             if(aim.x != 0.0f || aim.y != 0.0f){
                 inputs.target = aim.mag2() < 1 ? aim : aim.norm();
             }
-
         }
-
-
 	}
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
 		// called once per frame
-        srpg_data::timers->frameMark();
-		srpg_data::timers->start("MainLoop");
+        srpg::timers->frameMark();
+		srpg::timers->start("MainLoop");
 
 		SetDrawTarget(nullptr);
         Clear(olc::BLANK);
-        SetDrawTarget(srpg_data::renderLayerMenu);
+        SetDrawTarget(srpg::renderLayerMenu);
         Clear(olc::BLANK);
-        SetDrawTarget(srpg_data::renderLayerUI);
+        SetDrawTarget(srpg::renderLayerUI);
         Clear(olc::BLANK);
-        SetDrawTarget(srpg_data::renderLayerEntities);
+        SetDrawTarget(srpg::renderLayerEntities);
         Clear(olc::BLANK);
-        SetDrawTarget(srpg_data::renderLayerFloor);
+        SetDrawTarget(srpg::renderLayerFloor);
         Clear(olc::Pixel(0,16,0));
 
         // Clear all layers for new frame draw.
 
 
         //Gather input
-        srpg_data::controls inputs;
+        srpg::controls inputs;
 		takeInput(inputs);
 
 		if(inputs.escapeKey){
-            if(state.menu == STATE::MENU::CLOSED){
-                state.menu = STATE::MENU::MAIN;
-                if(gamePlay){
-                    state.game = STATE::GAME::PAUSED;
-                }
+
+            if(gamePlay){
+                /// if we have a game open we switch menu state, and set game to play if menus are all closed, pause the game otherwise.
+                state.menu = state.menu == STATE::MENU::CLOSED ? STATE::MENU::MAIN : STATE::MENU::CLOSED;
             } else {
-                state.menu = STATE::MENU::CLOSED;
-                if(gamePlay){
-                    state.game = STATE::GAME::PLAY;
-                }
+            /// if no game just ensure main menu is opened - eventually will be a main open or go back 1 level check
+                state.menu = STATE::MENU::MAIN;
             }
         }
 
         if(state.menu == STATE::MENU::MAIN){
-            SetDrawTarget(srpg_data::renderLayerMenu);
+            SetDrawTarget(srpg::renderLayerMenu);
             menuDisplay[TITLE]->display(inputs);
             menuDisplay[TITLE]->display(inputs);
             SetDrawTarget(nullptr);
         }
 
         if(gamePlay){
-        SetDrawTarget(srpg_data::renderLayerMenu);
+        SetDrawTarget(srpg::renderLayerMenu);
         std::list<std::shared_ptr<Entity>> closeTest;
-        srpg_data::gameObjects->getFoes(inputs.target,20, 5,closeTest,QuadTree::WEAK);
+        srpg::gameObjects->getFoes(inputs.target,20, 5,closeTest,QuadTree::WEAK);
         for(auto ent = closeTest.begin(); ent != closeTest.end();ent++)
-            srpg_data::viewer->DrawLine((*ent)->location(),inputs.target);
+            srpg::viewer->DrawLine((*ent)->location(),inputs.target);
         }
-
 
         switch (state.game){
-        case STATE::GAME::PLAY :
-            gamePlay->run(fElapsedTime,inputs);
-            if(gamePlay->gameOver()){
-               state.game = STATE::GAME::OVER;
-            }
-        break;
-        case STATE::GAME::PAUSED :
-            gamePlay->pause();
-        break;
-        case STATE::GAME::OVER :
-            menuDisplay[GAMEOVER]->display(inputs); //gameOverScreen->display(inputs);
-        break;
-
+            case STATE::GAME::PLAY :
+                if(state.menu == STATE::MENU::CLOSED){
+                    gamePlay->run(fElapsedTime,inputs);
+                } else {
+                    gamePlay->pause();
+                }
+                if(gamePlay->gameOver()){
+                   state.game = STATE::GAME::OVER;
+                }
+            break;
+            case STATE::GAME::OVER :
+                menuDisplay[GAMEOVER]->display(inputs);
+            break;
         }
+
         if(gamePlay){
             gamePlay->gameHudDraw(inputs);
             gamePlay->draw();
@@ -332,16 +332,15 @@ public:
 
         SetDrawTarget(nullptr);
 
-        srpg_data::timers->stop("MainLoop");
-        if(srpg_data::debugTools)
-            srpg_data::timers->drawDebug(this);
+        srpg::timers->stop("MainLoop");
+        if(srpg::debugTools)
+            srpg::timers->drawDebug(this);
 		return gameOpen; // if gameOpen becomes false this will close the program
 	}
 
 
     bool OnUserDestroy(){
         //clean up memory on exit
-        delete srpg_data::viewer;
         return true;
     }
 

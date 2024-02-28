@@ -14,19 +14,17 @@ class Decoration;
 template <class E>
 class Manager {
 protected:
-    olc::PixelGameEngine* srpg;
+    olc::PixelGameEngine* pge;
     float worldRadius;
 
     std::list<std::shared_ptr<E>> items;
     std::shared_ptr<olc::Sprite> image = nullptr;
     std::shared_ptr<olc::Decal> drawing = nullptr;
 
-    Manager<E>(olc::PixelGameEngine* srpg, float worldRadius);
+    Manager<E>(olc::PixelGameEngine* game, float worldRadius);
     ~Manager<E>();
     int size();
-    void spawn();
     int update(float fElapsedTime,olc::vf2d movement);
-    public:
 };
 
 ///Foe Manager is designed around enemies and will maintain their numbers, stats growth and overall difficulty
@@ -37,7 +35,7 @@ class FoeManager : public Manager<Npc>{
 
     int deadFoes = 0;
     public:
-    FoeManager(olc::PixelGameEngine* game, float world);
+    FoeManager(olc::PixelGameEngine* pge, float world);
     ~FoeManager();
 
     int getKills();
@@ -58,7 +56,7 @@ private:
     float speed = 0;
     int hits = 0;
 public:
-    ProjectileManager(olc::PixelGameEngine* srpg, float worldRadius);
+    ProjectileManager(olc::PixelGameEngine* game, float worldRadius);
     ~ProjectileManager();
 
     void setProjectileStats(float life, float speed,int hits);
@@ -75,7 +73,7 @@ private:
     float grassSize = 0.01f;
     olc::Pixel grassColour = olc::DARK_GREEN;
 public:
-    DecalManager(olc::PixelGameEngine* srpg, float worldRadius);
+    DecalManager(olc::PixelGameEngine* game, float worldRadius);
     ~DecalManager();
 
     void initalize();

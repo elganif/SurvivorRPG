@@ -12,7 +12,7 @@
 
 /// class Manager
 template <class E>
-Manager<E>::Manager(olc::PixelGameEngine* game, float world) : srpg(game),worldRadius(world) {}
+Manager<E>::Manager(olc::PixelGameEngine* game, float world) : pge(game),worldRadius(world) {}
 
 template <class E>
 Manager<E>::~Manager()
@@ -77,7 +77,7 @@ void FoeManager::spawn(float foeSize)
     /// Add spawned unit to the list and the quad tree
     std::shared_ptr<Npc> theEvil = std::make_shared<Npc>(attempt,foeSize);
     theEvil->setSharedDecal(drawing);
-    srpg_data::gameObjects->insertItem(theEvil);
+    srpg::gameObjects->insertItem(theEvil);
     items.push_back(std::move(theEvil));
 }
 
@@ -85,35 +85,35 @@ void FoeManager::spawn(float foeSize)
 void FoeManager::makeRender()
 {
     /// prepare the sprite object for drawing
-    olc::vi2d area = srpg_data::viewer->ScaleToScreen({foeSize*2,foeSize*2} ) ;
+    olc::vi2d area = srpg::viewer->ScaleToScreen({foeSize*2,foeSize*2} ) ;
     image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
 
-    srpg->SetDrawTarget(image.get());
-    srpg->Clear(olc::BLANK);
+    pge->SetDrawTarget(image.get());
+    pge->Clear(olc::BLANK);
 
     olc::Pixel colours = olc::DARK_RED;
-    srpg->FillCircle(area.x * 0.50 ,area.y * 0.12 , area.x * 0.12 ,olc::BLACK);// Head
-    srpg->DrawCircle(area.x * 0.50 ,area.y * 0.12 , area.x * 0.12,colours );
+    pge->FillCircle(area.x * 0.50 ,area.y * 0.12 , area.x * 0.12 ,olc::BLACK);// Head
+    pge->DrawCircle(area.x * 0.50 ,area.y * 0.12 , area.x * 0.12,colours );
 
 
-    srpg->FillRect( area.x * 0.25 ,area.y *0.25 , area.x *0.10 , area.y *0.30 ,olc::BLACK);// Left Arm
-    srpg->DrawRect( area.x * 0.25 ,area.y *0.25 , area.x *0.10 , area.y *0.30 ,colours);
+    pge->FillRect( area.x * 0.25 ,area.y *0.25 , area.x *0.10 , area.y *0.30 ,olc::BLACK);// Left Arm
+    pge->DrawRect( area.x * 0.25 ,area.y *0.25 , area.x *0.10 , area.y *0.30 ,colours);
 
-    srpg->FillRect(  area.x *0.65 , area.y *0.25 , area.x *0.10 , area.y *0.30 ,olc::BLACK);// Right Arm
-    srpg->DrawRect(  area.x *0.65 , area.y *0.25 , area.x *0.10 , area.y *0.30 ,colours);
+    pge->FillRect(  area.x *0.65 , area.y *0.25 , area.x *0.10 , area.y *0.30 ,olc::BLACK);// Right Arm
+    pge->DrawRect(  area.x *0.65 , area.y *0.25 , area.x *0.10 , area.y *0.30 ,colours);
 
-    srpg->FillRect( area.x *0.35 ,area.y *0.25 , area.x *0.30 , area.y *0.35 ,olc::BLACK); //torso
-    srpg->DrawRect( area.x *0.35 ,area.y *0.25 , area.x *0.30 , area.y *0.35 ,colours);
+    pge->FillRect( area.x *0.35 ,area.y *0.25 , area.x *0.30 , area.y *0.35 ,olc::BLACK); //torso
+    pge->DrawRect( area.x *0.35 ,area.y *0.25 , area.x *0.30 , area.y *0.35 ,colours);
 
-    srpg->FillRect( area.x *0.38 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,olc::BLACK);// Left Leg
-    srpg->DrawRect( area.x *0.38 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,colours);
+    pge->FillRect( area.x *0.38 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,olc::BLACK);// Left Leg
+    pge->DrawRect( area.x *0.38 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,colours);
 
-    srpg->FillRect( area.x *0.50 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,olc::BLACK);// Right Leg
-    srpg->DrawRect( area.x *0.50 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,colours);
+    pge->FillRect( area.x *0.50 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,olc::BLACK);// Right Leg
+    pge->DrawRect( area.x *0.50 , area.y *0.60 , area.x *0.12 , area.y *0.40 ,colours);
 
     /// Set decal and return draw target to default
     drawing = std::make_shared<olc::Decal>(image.get());
-    srpg->SetDrawTarget(nullptr);
+    pge->SetDrawTarget(nullptr);
 }
 
 void FoeManager::collision()
@@ -121,7 +121,7 @@ void FoeManager::collision()
 
     for(std::shared_ptr<Npc> foe : items){
         std::list<std::shared_ptr<Entity>> impacts;
-        srpg_data::gameObjects->getOverlapItems(foe->getBoxCollider(),impacts);
+        srpg::gameObjects->getOverlapItems(foe->getBoxCollider(),impacts);
         for(std::shared_ptr<Entity> other : impacts){
             foe->onOverlap(other);
         }
@@ -159,7 +159,7 @@ int FoeManager::getKills()
 
 
 /// class ProjectileManager
-ProjectileManager::ProjectileManager(olc::PixelGameEngine* srpg, float worldRadius) : Manager(srpg,worldRadius){};
+ProjectileManager::ProjectileManager(olc::PixelGameEngine* game, float worldRadius) : Manager(game,worldRadius){};
 
 ProjectileManager::~ProjectileManager(){}
 
@@ -171,10 +171,10 @@ void ProjectileManager::setProjectileStats(float lifeTime, float travelSpeed, in
 
 void ProjectileManager::spawn(olc::vf2d origin, olc::vf2d target, olc::vf2d bulletSize){
     olc::vf2d momentum = target.norm() * speed;
-    std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(origin,bulletSize,life,momentum,hits,srpg);
+    std::shared_ptr<Projectile> temp = std::make_shared<Projectile>(origin,bulletSize,life,momentum,hits,pge);
     temp->setSharedDecal(drawing);
     items.push_front(temp);
-    srpg_data::gameObjects->insertItem(temp);
+    srpg::gameObjects->insertItem(temp);
 }
 
 void ProjectileManager::update(float fElapsedTime,olc::vf2d worldMove){
@@ -183,11 +183,11 @@ void ProjectileManager::update(float fElapsedTime,olc::vf2d worldMove){
 
 void ProjectileManager::makeRender(olc::vf2d pSize){
     /// prepare the sprite object for drawing
-    olc::vi2d area = srpg_data::viewer->ScaleToScreen({pSize.x,pSize.y}) ;
+    olc::vi2d area = srpg::viewer->ScaleToScreen({pSize.x,pSize.y}) ;
     image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
 
-    srpg->SetDrawTarget(image.get());
-    srpg->Clear(olc::BLANK);
+    pge->SetDrawTarget(image.get());
+    pge->Clear(olc::BLANK);
 
     // Set up Tips of Triangle
     olc::vi2d tip =   {area.x / 2,0};
@@ -196,18 +196,18 @@ void ProjectileManager::makeRender(olc::vf2d pSize){
 
     olc::Pixel fColour = olc::Pixel(0,0,0);
     olc::Pixel lineColour = olc::Pixel(128,0,63); /// temp until I figure out where these should live and how they get here
-    srpg->FillTriangle(tip,left,right,fColour);
-    srpg->DrawTriangle(tip,left,right,lineColour);
+    pge->FillTriangle(tip,left,right,fColour);
+    pge->DrawTriangle(tip,left,right,lineColour);
 
     /// Set decal and return draw target to default
     drawing = std::make_shared<olc::Decal>(image.get());
-    srpg->SetDrawTarget(nullptr);
+    pge->SetDrawTarget(nullptr);
 }
 
 
 /// class DecalManager
 /// Designed around background objects and static elements.
-DecalManager::DecalManager( olc::PixelGameEngine* srpg, float worldRadius) : Manager(srpg,worldRadius){}
+DecalManager::DecalManager( olc::PixelGameEngine* game, float worldRadius) : Manager(game,worldRadius){}
 
 DecalManager::~DecalManager(){}
 
@@ -243,7 +243,7 @@ void DecalManager::initalize(){
         if(valid){
             std::shared_ptr<Decoration> temp = std::make_shared<Decoration>(attempting, grassSize);
             temp->setSharedDecal(drawing);
-            srpg_data::gameObjects->insertItem(temp);
+            srpg::gameObjects->insertItem(temp);
             items.push_back(std::move(temp));
 
         } else {
@@ -273,17 +273,17 @@ void DecalManager::update(float fElapsedTime, olc::vf2d worldMove){
 void DecalManager::makeRender(){
 
 
-    olc::vi2d area = srpg_data::viewer->ScaleToScreen({grassSize * 2,grassSize * 2});
+    olc::vi2d area = srpg::viewer->ScaleToScreen({grassSize * 2,grassSize * 2});
     image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
 
-    srpg->SetDrawTarget(image.get());
-    srpg->Clear(olc::BLANK);
+    pge->SetDrawTarget(image.get());
+    pge->Clear(olc::BLANK);
 
-    srpg->DrawLine( 0,area.y*0.5f,0,area.y,grassColour);
-    srpg->DrawLine(area.x *0.5f,0.0f,area.x*0.5f,area.y,grassColour);
-    srpg->DrawLine(area.x,area.y*0.5f,area.x,area.y,grassColour);
+    pge->DrawLine( 0,area.y*0.5f,0,area.y,grassColour);
+    pge->DrawLine(area.x *0.5f,0.0f,area.x*0.5f,area.y,grassColour);
+    pge->DrawLine(area.x,area.y*0.5f,area.x,area.y,grassColour);
 
-    srpg->SetDrawTarget(nullptr);
+    pge->SetDrawTarget(nullptr);
 
     drawing = std::make_shared<olc::Decal>(image.get());
 }

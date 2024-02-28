@@ -40,8 +40,8 @@ void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
             return;
         }
     } // else we store it in this element
-    entStored.push_front(newEnt);
-    newEnt->setTreeLocation(this,entStored.begin());
+    entStored.insert(std::make_pair(newEnt->getUID(),newEnt));
+    newEnt->setTreeLocation(this);//,entStored.begin());
 
     return;
 }
@@ -55,7 +55,7 @@ void QuadTree::getOverlapItems(Rectangle area, std::list<std::shared_ptr<Entity>
         }
     }
     // add any overlaped items from this layer
-    for(std::shared_ptr<Entity>& ent : entStored){////auto it = entStored.begin(); it!= entStored.end(); it++){
+    for(auto& [key,ent] : entStored){////auto it = entStored.begin(); it!= entStored.end(); it++){
         if(area.overlaps(ent->getBoxCollider())){
             returns.push_back(ent);
         }
@@ -76,7 +76,7 @@ int QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg, std::list<s
         break;
         case WEAK:
             targMethod = [](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
-                                    {return (( (Npc*)(f.get()) )->getHP() < ( (Npc*)(s.get()) )->getHP()); };
+                                    {return ( ( (Npc*)(f.get()) )->getHP() < ( (Npc*)(s.get()) )->getHP() ); };
         break;
         case STRONG:
             targMethod = [](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)
@@ -104,18 +104,18 @@ void QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg,std::list<s
     }
 
     /// Check entities in the current quad
-    for(auto ent = entStored.begin(); ent != entStored.end(); ent++){
-        if ( (*ent)->whoAreYou() != Entity::NPC ){
+    for(auto& [key,ent] : entStored){
+        if ( ent->whoAreYou() != Entity::NPC ){
             continue; /// Not who we are looking for
         }
-        if(( (*ent)->location() - targetLoc).mag2() > range ){
+        if(( ent->location() - targetLoc).mag2() > range ){
             continue; /// ent is out of range
         }
-        if(returns.size() >= numTarg && targType( (*ent),returns.back())){
+        if(returns.size() >= numTarg && targType( ent,returns.back()) ){
             continue; /// target is not better than current options
         } /// else
         /// add ent, sort into correct location and remove last one if list was full
-        returns.push_front(*ent);
+        returns.push_front(ent);
         returns.sort(targType);
         if(returns.size() >= numTarg){
             returns.pop_back();
@@ -137,58 +137,57 @@ void QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg,std::list<s
 /// Position validator that is called directly by entities each time one moves.
 /// Treenode and entIT Values are to be updated by elevator functions once entity
 /// is placed in new node.
-void QuadTree::validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+void QuadTree::validateEnt(QuadTree*& treeNode, int entID){
     /// First record a stable copy of the iterator because once the entity is moved the entIT will already be updated on the return trip
 
-    std::list<std::shared_ptr<Entity>>::iterator myEntIT = entIT;
+    std::map<int,std::shared_ptr<Entity>>::iterator entLoc = entStored.find(entID);
+    if(entLoc == entStored.end())
+        return; // no such entity here
 
-    if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
+    if(depth != 0 && !quadArea.contains(entLoc->second->getBoxCollider())){
 
-        parentNode->upEscalator(treeNode,entIT);
-        entStored.erase(myEntIT);
-        srpg_data::timers->stop("validation");
+        parentNode->upEscalator(treeNode,entLoc->second);
+        entStored.erase(entID);
+
         return;
     } // else not going up, check down
     for(int i = 0; i < 4; i++){
-        if(depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+        if(depth < depthLimit && childArea[i].contains(entLoc->second->getBoxCollider())){
             if(!quads[i]){
                 quads[i] = new QuadTree(childArea[i],depth + 1,this);
             }
-            quads[i]->downEscalator(treeNode,entIT);
-            entStored.erase(myEntIT);
+            quads[i]->downEscalator(treeNode,entLoc->second);
+            entStored.erase(entID);
             return;
         }
-    } // else: Validation successful, return.
-    return;
+    } // else: Validation successful, nothing to do
 }
 
 /// Passes units up the tree recursively during the validation process.
-/// Updates treeNode and entIT once correct node is found.
-void QuadTree::upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
-    if(depth != 0 && !quadArea.contains((*entIT)->getBoxCollider())){
+/// Updates treeNode once correct node is found.
+void QuadTree::upEscalator(QuadTree*& treeNode, std::shared_ptr<Entity>& entIT){
+    if(depth != 0 && !quadArea.contains(entIT->getBoxCollider())){
         parentNode->upEscalator(treeNode,entIT);
         return;
     } //else we check sub quads
     for(int i = 0; i < 4; i++){
-        if(depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+        if(depth < depthLimit && childArea[i].contains(entIT->getBoxCollider())){
             if(!quads[i]){
                 quads[i] = new QuadTree(childArea[i],depth + 1,this);
             }
             quads[i]->downEscalator(treeNode,entIT);
             return;
         }
-    } // else : we know it is not going up, but does not fit in a sub quad
-    entStored.push_front(std::move(*entIT));
+    } // else : we know it is not going up, but does not fit in a sub quad thus belongs here
+    entStored.insert(std::make_pair(entIT->getUID(),std::move(entIT) ));
     treeNode = this;
-    entIT = entStored.begin();
-    return;
 }
 
 /// passes units down the tree recursively during validation.
-/// Updates treeNode and entIT once correct node is found
-void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
+/// Updates treeNode
+void QuadTree::downEscalator(QuadTree*& treeNode, std::shared_ptr<Entity>& entIT){
     for(int i = 0; i < 4; i++){
-        if( depth < depthLimit && childArea[i].contains((*entIT)->getBoxCollider())){
+        if( depth < depthLimit && childArea[i].contains(entIT->getBoxCollider())){
             if(!quads[i]){
                 quads[i] = new QuadTree(childArea[i],depth + 1,this);
             }
@@ -196,29 +195,26 @@ void QuadTree::downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Enti
             return;
         }
     } // else : we know its not going up, but does not fit in a sub quad
-    entStored.push_front(std::move(*entIT));
+    entStored.insert(std::make_pair(entIT->getUID(),std::move(entIT) ));
     treeNode = this;
-    entIT = entStored.begin();
-    return;
 }
 
 /// Removal function for expired entities.
-void QuadTree::removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT){
-    if(entIT != entStored.end()){
-        entStored.erase(entIT);
-        entIT = entStored.end();
-        treeNode = nullptr;
-    }
-    return;
+void QuadTree::removeMe(QuadTree*& treeNode, int entID){
+    std::map<int,std::shared_ptr<Entity>>::iterator entLoc = entStored.find(entID);
+    if(entLoc == entStored.end())
+        return; // no such entity here
+    entLoc->second->setTreeLocation(nullptr);
+    entStored.erase(entID);
 }
 
-/// Debug function to draw all nodes to the screen, or to the specified area.
+/// Debug function to draw all nodes to the specified area.
 void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
     if(quadArea.overlaps(area)){
         if(entStored.size() > 0){
-            srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,item);
+            srpg::viewer->DrawRect(quadArea.tl,quadArea.sides,item);
         } else {
-            srpg_data::viewer->DrawRect(quadArea.tl,quadArea.sides,noItem);
+            srpg::viewer->DrawRect(quadArea.tl,quadArea.sides,noItem);
         }
 
         for(int i = 0;i < 4; i++){
@@ -233,7 +229,7 @@ void QuadTree::drawTree(Rectangle area, olc::Pixel item,olc::Pixel noItem ){
 /// returns bool indicating if it is clean and can be deleted or if there is any object under that needs to be preserved.
 bool QuadTree::clean()
 {
-    bool isClean = entStored.size() == 0;
+    bool isClean = (entStored.size() == 0);
     for(int i = 0; i < 4; i++){
         if(quads[i]){
             if(quads[i]->clean()){
@@ -289,40 +285,50 @@ int QuadTree::curDepth()
 
     Profiler::Profiler()
     {
+        coreFrame.emplace(frameCounter++,Event(defaultName,frameCounter));
     }
 
     void Profiler::frameMark()
     { /// Called to mark when a new frame cycle is started.
-        stop(defaultName);
-        events[defaultName].push_front(Event(defaultName,frameCounter++));
-        /// remove events over 1 second old to prevent excessive memory build up.
-        std::chrono::_V2::steady_clock::time_point now = std::chrono::_V2::steady_clock::now();
+        coreFrame.emplace(frameCounter++, Event(defaultName,frameCounter));
+
+        /// set the stop time of last counter to the start time we just created.
+        /// because an event is added in contruction and we just added a second we can safely access the second member of the list.
+        std::next(coreFrame.rbegin())->second.stopT = coreFrame.rbegin()->second.startT;
+        std::next(coreFrame.rbegin())->second.openCount--;
+
+        /// remove events keeping track of only the last 60.
+        while(coreFrame.size() > 61){
+            coreFrame.erase(coreFrame.begin());
+        }
+
+        /// remove map events that nolonger have a corosponding coreFrame event
         for(auto& [key,eventList] : events ){
-            eventList.remove_if( [now](auto &value)
-                                    { if( value.stopT.time_since_epoch().count() == 0) {return false;}
-                                    return std::chrono::duration<float>(now - value.startT).count() > 1.0f ;} );
+            while(eventList.size() > 0 && eventList.back().frameNum < coreFrame.begin()->first)
+                eventList.pop_back();
         }
     }
 
     /// Create an event and add it at first time in list
     void Profiler::start(std::string timerID)
     {
-        /// if the list is empty or if the last timer has been closed properly we create new timer.
+        /// if this list is empty or if the last timer has been closed properly we create new timer.
         /// this is to handle calls in recursive functions and treat them as a single event until fully closed.
         if(events[timerID].size() == 0 || events[timerID].front().openCount == 0){
-            events[timerID].push_front(Event(timerID,events[defaultName].front().frameNum));
-        } else {
-            /// increment open Counters on this label.
-            events[timerID].front().openCount++ ;
+            events[timerID].push_front(Event(timerID,coreFrame.rbegin()->second.frameNum));
+            return;
         }
+        /// otherwise increment open Counters on this timmer.
+        events[timerID].front().openCount++ ;
+
     }
 
     /// Update the end time of the front item.
-    float Profiler::stop(std::string timerID)
+    std::chrono::_V2::steady_clock::duration Profiler::stop(std::string timerID)
     {
-        /// if the event list is empty, or the prior timer is completed we do not want to access or overright stopT so skip and return 0.
+        /// if the event list is empty, or the prior timer is completed we do not want to access or overwright stopT so return 0.
         if(events[timerID].size() == 0 || events[timerID].front().openCount == 0){
-            return 0;
+            return std::chrono::_V2::steady_clock::duration {0};
         }
         /// record the current stop time, decriment open counter, return the passed time.
         events[timerID].front().stopT = std::chrono::_V2::steady_clock::now();
@@ -334,37 +340,26 @@ int QuadTree::curDepth()
     {
         start("debug"); /// valuable to know how much time is lost to createing this display.
 
+        /// Go through default event to gather total tracked history data
+        float totalTimeTracked = std::chrono::duration<float>(std::next(coreFrame.rbegin())->second.stopT - coreFrame.begin()->second.startT ).count();
 
-        /// the first closed default event is used to determine graph scaleing
-        std::chrono::_V2::steady_clock::time_point frameBegin;
-        std::chrono::_V2::steady_clock::time_point frameEnd;
-        int lastFrameNum;
-        bool frameFound = false;
+        if(coreFrame.size() <= 1)
+            return; /// theres no closed frame events, nothing to do.
 
-        for(Event& checkFrame : events[defaultName]){
-            if(!frameFound && checkFrame.stopT.time_since_epoch().count() != 0){
-                frameBegin = checkFrame.startT;
-                frameEnd = checkFrame.stopT;
-                lastFrameNum = checkFrame.frameNum;
-                frameFound = true;
-                break; // Closed frame found no need to continue for loop.
-            }
-        }
-        if(!frameFound){
-            return; // If no closed frame was found We dont have assigned values. Expected to happen on first frame call.
-        }
+        int numFramesShown = 5;
+        float timePerFrame = 1.0f/60.0f;  /// 60 fps
+        int lastFrameNum = std::next(coreFrame.rbegin())->first;
+
 
         game->SetDrawTarget(nullptr); /// Draw to default layer above all others
-        float numFramesShown = 5;
         int lineHeight = 10;
 
         int wide = game->ScreenWidth();
         int height = game->ScreenHeight();
 
-        float frameScale = (wide/numFramesShown) / (std::chrono::duration<float>(frameEnd - frameBegin).count());
+        float frameScale = (wide/numFramesShown) / timePerFrame;
         float displayStart = (wide/numFramesShown);
 
-        float totTimeUsed = std::chrono::duration<float>(frameEnd - frameBegin).count();
 
         int drawHeight = height - lineHeight;
 
@@ -372,46 +367,59 @@ int QuadTree::curDepth()
             if(eventList.size() == 0){
                 continue; /// no need to operate on empty lists
             }
-            /// Check if a timer is being called an excessive number of times. It will still be calculated for times, but on 1 frame will be drawn.
+            /// Check if a timer is being called an excessive number of times (more than 50 per frame).
+            /// It will still be calculated for times over the last frame and adjusted, but draw is skipped
             bool skipExcessiveDraws = false;
-            if(eventList.size() >= 100 + events[defaultName].size())
+            if(eventList.size() >= 50 * events[defaultName].size() )
                 skipExcessiveDraws = true;
 
             /// iterate through this event drawing the time frames it occupied
-            float totalTimeRun = 0;
-            int eventPerFrame = 0;
+            float eventTimeRun = 0;
+            int eventsTracked = 0;
             for(Event& timer : eventList){
-                if(timer.frameNum > lastFrameNum || timer.stopT.time_since_epoch().count() == 0)
-                    continue; // this cycle or timer event is not yet closed and will be skipped.
-                if(skipExcessiveDraws && timer.frameNum < lastFrameNum)
-                    break;// if a timer has excessive events once we finish the timed frame we skip the remainder of the list.
+                if(timer.openCount > 0 || timer.frameNum > lastFrameNum)
+                    continue; /// this timer event or cycle is not yet closed or has aged out and will be skipped.
 
-                float ending = std::chrono::duration<float>(frameEnd - timer.stopT).count();
-                float length = timer.passedTime();
-                olc::Pixel colour = olc::DARK_YELLOW;
+                float length = std::chrono::duration<float>(timer.passedTime()).count();
 
-                /// Accumulate some data based on the last rendered frame.
-                if(timer.frameNum == lastFrameNum){
-                    totalTimeRun += length;
-                    eventPerFrame ++;
-                    colour = olc::GREEN;
+                /// Accumulate our runtime data
+                eventTimeRun += length;
+                eventsTracked ++;
+
+                if(skipExcessiveDraws){ /// skip drawing phase for excessive data
+                    continue;
                 }
-                int rectStart = ending*frameScale+displayStart;
-                /// Only need to draw if it will appear on screen.
+
+                bool lastFrame = timer.frameNum == lastFrameNum; // ? colour = olc::GREEN : olc::DARK_YELLOW;
+
+                float start = std::chrono::duration<float>(timer.startT - coreFrame.find(timer.frameNum)->second.startT ).count();
+
+                int frameStart = (1 + (lastFrameNum - timer.frameNum)) * displayStart;
+                int rectStart = start * frameScale + frameStart;
+                int rectLong = length * frameScale;
+                if (lastFrame)
+                    game->FillRect(rectStart,drawHeight,rectLong,lineHeight,olc::GREEN);
                 if (rectStart < wide)
-                    game->DrawRect(rectStart,drawHeight,length*frameScale,lineHeight,colour);
-
+                    game->DrawRect(rectStart,drawHeight,rectLong,lineHeight,olc::DARK_YELLOW);
             }
-
-            float percentOfFrame = totalTimeRun / (1.0f/60.0f) * 100;
+            float aveEvents = (float)eventsTracked / ((float)coreFrame.size() - 1);
+            float percentOfFrame = (eventTimeRun / totalTimeTracked) * 100;
             /// Write our analytics about the bar on screen
-            game->DrawString(lineHeight,drawHeight+1,key +" "+ std::to_string(eventPerFrame),olc::YELLOW);
+            game->DrawString(lineHeight,drawHeight+1,key + " "+ std::to_string(aveEvents).substr(0,5),olc::YELLOW);
 
             std::string percentage = std::to_string(percentOfFrame);
             percentage = percentage.substr(0,percentage.find(".")+4);
             game->DrawString(displayStart - (percentage.size() * 8),drawHeight+1,percentage,olc::YELLOW);
+
             drawHeight -= lineHeight;
         }
+        float percentOfFrame = totalTimeTracked / (coreFrame.size() - 1) / timePerFrame * 100;
+        game->DrawString(lineHeight,drawHeight+1,"coreFrame "+ std::to_string(coreFrame.size() - 1).substr(0,5),olc::YELLOW);
+
+        std::string percentage = std::to_string(percentOfFrame);
+        percentage = percentage.substr(0,percentage.find(".")+4);
+        game->DrawString(displayStart - (percentage.size() * 8),drawHeight+1,percentage,olc::YELLOW);
+
         for(int i = displayStart; i < wide;i += displayStart){
             game->DrawLine(i,drawHeight,i,height,olc::BLUE);
         }

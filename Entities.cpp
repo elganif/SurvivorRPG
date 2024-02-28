@@ -20,7 +20,7 @@ olc::vf2d Entity::location(olc::vf2d destiny)
 {
     _location = destiny;
     if(hostTreeNode){
-        hostTreeNode->validateEnt(hostTreeNode,myself);
+        hostTreeNode->validateEnt(hostTreeNode,getUID());
     }
     return _location;
 }
@@ -31,11 +31,6 @@ void Entity::movement(olc::vf2d destiny)
     location(_location + destiny);
 }
 
-/// frame update for Entity
-//void Entity::update(float fElapsedTime,olc::vf2d worldMove)
-//{
-//    movement(worldMove);
-//}
 
 void Entity::update(float fElapsedTime, olc::vf2d worldMove){
     float friction = 0.75;
@@ -64,29 +59,32 @@ void Entity::setSharedDecal(std::shared_ptr<olc::Decal> tDecal){
 }
 
 /// returns if entity is needed or can be removed from lists and other systems
-bool Entity::isValid(){
-    if(whatIsLife()){
+bool Entity::isValid()
+{
+    if(whatIsLife() ){
         return true;
     } /// Else entity is dead, check if it is still in quadTree and remove if necessary.
     if (hostTreeNode){
-        hostTreeNode->removeMe(hostTreeNode,myself);
+        hostTreeNode->removeMe(hostTreeNode,getUID());
     }
     return false;
-
 }
 
-bool Entity::operator == (const Entity& other) const{
+bool Entity::operator == (const Entity& other) const
+{
     return entID == other.entID;
 }
 
-bool Entity::operator != (const Entity& other) const{
+bool Entity::operator != (const Entity& other) const
+{
     return !( *this == other);
 }
 
 /// used by QuadTree to give the entity information about where it sits. Used for calling validation on the tree.
-void Entity::setTreeLocation(QuadTree* treeNode, std::list<std::shared_ptr<Entity>>::iterator ent){
+void Entity::setTreeLocation(QuadTree* treeNode)//, std::list<std::shared_ptr<Entity>>::iterator ent)
+{
     hostTreeNode = treeNode;
-    myself = ent;
+    //myself = ent;
 }
 
 // Make Render may be moved to its own class later to import instructions from config files.
@@ -149,7 +147,7 @@ void Npc::update(float fElapsedTime,olc::vf2d worldMove){
 }
 
 bool Npc::whatIsLife(){
-    return HP > 0.0f;
+    return (HP > 0.0f);
 }
 
 void Npc::onOverlap(std::shared_ptr<Entity> other){
@@ -173,7 +171,6 @@ void Npc::onOverlap(std::shared_ptr<Entity> other){
 }
 
 void Npc::bump(olc::vf2d otherLoc,float otherSize){
-    //srpg_data::timers->start("bumpin");
     olc::vf2d entRelLoc = (location() - otherLoc); // coordinate Dist
     float collideDist = (otherSize + entSize);
 
@@ -184,15 +181,14 @@ void Npc::bump(olc::vf2d otherLoc,float otherSize){
         momentum += entRelLoc.norm()*force;
 
     }
-    //srpg_data::timers->stop("bumpin");
 }
 
 void Npc::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
+    srpg::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
 
     // debug collider
-    if(srpg_data::debugTools){
-        srpg_data::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_RED);
+    if(srpg::debugTools){
+        srpg::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_RED);
     }
 }
 
@@ -217,7 +213,7 @@ Hero::~Hero(){};
 
 Entity::TYPE Hero::whoAreYou(){return HERO;}
 
-void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg_data::controls& inputs){
+void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg::controls& inputs){
     bulletMan->update(fElapsedTime,worldMove);
 
     walkingDirection = inputs.movement;
@@ -230,7 +226,7 @@ void Hero::update(float fElapsedTime,olc::vf2d worldMove, srpg_data::controls& i
     while( projectileCooldown >= 0){
         projectileCooldown -= 1/fireRate;
         std::list<std::shared_ptr<Entity>> targets;
-        srpg_data::gameObjects->getFoes(location(),bulletLife*bulletSpeed,fireCount, targets, QuadTree::CLOSE);
+        srpg::gameObjects->getFoes(location(),bulletLife*bulletSpeed,fireCount, targets, QuadTree::CLOSE);
 
         for(auto ent = targets.begin(); ent != targets.end(); ent++){
             fireProjectile((*ent)->location());
@@ -260,6 +256,7 @@ void Hero::onOverlap(std::shared_ptr<Entity> other){
     if(other->whoAreYou() == NPC){
         //Collide with Friendly
         std::dynamic_pointer_cast<Npc>(other)->bump(location(),entSize);
+        HP--;
     }
     if(other->whoAreYou() == PROJECTILE){
         // subtract projectiles damage from hp
@@ -270,19 +267,18 @@ void Hero::onOverlap(std::shared_ptr<Entity> other){
 
 
 void Hero::render(){
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
+    srpg::viewer->DrawDecal(getBoxCollider().tl + olc::vf2d(0.0,-0.2)*entSize,image.get());
 
-    srpg_data::viewer->FillRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
-                                getBoxCollider().sides.x*(HP/MaxHP),0.2f*entSize,olc::GREEN);
+    srpg::viewer->FillRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
+                                getBoxCollider().sides.x*(HP/maxHP),0.2f*entSize,olc::GREEN);
 
-    srpg_data::viewer->DrawRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
+    srpg::viewer->DrawRect(getBoxCollider().tl.x,getBoxCollider().tl.y + getBoxCollider().sides.y,
                                 getBoxCollider().sides.x,0.2f*entSize,olc::DARK_GREY);
 
     //collider Debug
-    if(srpg_data::debugTools){
-        srpg_data::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_BLUE);
+    if(srpg::debugTools){
+        srpg::viewer->DrawCircle(location(),entSize,olc::VERY_DARK_BLUE);
     }
-    //srpg_data::viewer->DrawRect(getBoxCollider().tl,getBoxCollider().sides);
 }
 
 void Hero::makeRender(std::shared_ptr<olc::Sprite> sprite,olc::vf2d area,olc::PixelGameEngine* game){
@@ -369,7 +365,7 @@ void Projectile::render()
 
     olc::vf2d proLoc = rotatePt(olc::vf2d( entSize*0.5, entSize*0.5),direction.norm());
 
-    srpg_data::viewer->DrawRotatedDecal(location(),image.get(),rad,{entSize/2.0f,shape/2.0f});
+    srpg::viewer->DrawRotatedDecal(location(),image.get(),rad,{entSize/2.0f,shape/2.0f});
 }
 
 
@@ -388,7 +384,7 @@ Entity::TYPE Decoration::whoAreYou()
 
 void Decoration::render()
 {
-    srpg_data::viewer->DrawDecal(getBoxCollider().tl,image.get());
+    srpg::viewer->DrawDecal(getBoxCollider().tl,image.get());
 }
 
 

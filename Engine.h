@@ -6,16 +6,16 @@ class UIContainer;
 
 class GameWorld{
 private:
-    olc::PixelGameEngine* srpg;
+    olc::PixelGameEngine* pge;
     olc::vi2d screenArea;
     float worldRadius;
 
     bool running = false;
     std::chrono::_V2::steady_clock::time_point epochTime;
-    std::chrono::time_point<std::chrono::_V2::steady_clock> frameTime;
+    std::chrono::_V2::steady_clock::time_point frameTime;
 
-    float engineTime = 0;
-    float tickSize = 1.0f/60.0f;
+    using frame = std::chrono::duration<int64_t,std::ratio<1,60>>;
+    frame engineClock;
     int maxTicks = 5;
 
     std::shared_ptr<olc::Sprite> heroicImage = nullptr;
@@ -27,16 +27,17 @@ private:
 
     std::unique_ptr<Screen> HUD;
 
+
 public:
     GameWorld(float worldSize,olc::PixelGameEngine* game);
     ~GameWorld();
 
     void start();
     bool gameOver();
-    bool run(float fElapsedTime,srpg_data::controls& input);
+    bool run(float fElapsedTime,srpg::controls& input);
     void draw();
     void pause();
-    void gameHudDraw(srpg_data::controls& inputs);
+    void gameHudDraw(srpg::controls& inputs);
     void gameHudGenerate();
 };
 

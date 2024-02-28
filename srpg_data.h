@@ -1,8 +1,6 @@
 #ifndef SRPG_DATA_H_INCLUDED
 #define SRPG_DATA_H_INCLUDED
 #include "Rectangle.h"  //include needed here for constructors in childArea initalizer
-#include "Entities.h"
-#include <deque>
 
 class Entity;
 
@@ -23,9 +21,9 @@ class QuadTree
 
     QuadTree* parentNode;
     std::vector<QuadTree*> quads = {nullptr,nullptr,nullptr,nullptr};
-    std::list<std::shared_ptr<Entity>> entStored;
+    std::map<int,std::shared_ptr<Entity>> entStored;
 
-
+    /// private constructor for making subquads.
     QuadTree(Rectangle newArea, int newdepth = 0,QuadTree* parent = nullptr);
 
     public:
@@ -45,20 +43,22 @@ class QuadTree
     int getFoes(olc::vf2d targetLoc, float range, int numTarg, std::list<std::shared_ptr<Entity>>& returns, TARG targType);
     void getFoes(olc::vf2d targetLoc, float range, int numTarg, std::list<std::shared_ptr<Entity>>& returns, std::function<bool(const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s)> targType);
 
-    void validateEnt(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
-    void upEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
-    void downEscalator(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
-    void removeMe(QuadTree*& treeNode, std::list<std::shared_ptr<Entity>>::iterator& entIT);
+    void validateEnt(QuadTree*& treeNode,int entID);
+    void removeMe(QuadTree*& treeNode,int entID);
+    private: /// used as part of validation process to relocate items.
+    void upEscalator(QuadTree*& treeNode, std::shared_ptr<Entity>& entIT);
+    void downEscalator(QuadTree*& treeNode,std::shared_ptr<Entity>& entIT);
 
+    public:
     bool clean();
 
     int size();
     int activity();
     int curDepth();
     void drawTree(Rectangle area, olc::Pixel item, olc::Pixel noItem );
-
-    /// Testing code for profiling different depth limits.
-    void adjustDepth(int change){depthLimit += change; if(depthLimit < 0) depthLimit = 0;}
+//
+//    /// Testing method for profiling different depth limits.
+//    void adjustDepth(int change){depthLimit += change; if(depthLimit < 0) depthLimit = 0;}
 };
 
 class Profiler {
@@ -69,31 +69,32 @@ public:
     ~Profiler() = default;
     struct Event{
         std::string identity;
-        int frameNum;
+        const int frameNum;
         int openCount = 1;
         std::chrono::_V2::steady_clock::time_point startT;
         std::chrono::_V2::steady_clock::time_point stopT;
 
         Event(std::string name,int frameOn):identity(name),frameNum(frameOn) {startT = std::chrono::_V2::steady_clock::now(); }
-        float passedTime(){ return std::chrono::duration<float>(stopT - startT).count(); }
+        std::chrono::_V2::steady_clock::duration passedTime(){ return std::chrono::duration(stopT - startT); }
+
     };
 
+    std::map<int,Event> coreFrame;
     std::unordered_map<std::string, std::list<Event>> events;
 
     void frameMark();
     void start(std::string timerID);
-    float stop(std::string timerID);
-    //bool running(std::string timerID);
+    std::chrono::_V2::steady_clock::duration stop(std::string timerID);
 
     void drawDebug(olc::PixelGameEngine* game);
 };
 
-namespace srpg_data{
+namespace srpg{
     const bool debugTools = true;
     extern std::unique_ptr<Profiler> timers;
 
     extern std::unique_ptr<QuadTree> gameObjects;
-    extern olc::TransformedView* viewer;
+    extern std::unique_ptr<olc::TransformedView> viewer;
     extern uint8_t renderLayerFloor;
     extern uint8_t renderLayerEntities;
     extern uint8_t renderLayerUI;

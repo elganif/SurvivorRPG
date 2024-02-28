@@ -2,7 +2,7 @@
 #define ENTITIES_H_INCLUDED
 
 /// Forward Declarations for passing through functions.
-namespace srpg_data{ struct controls; };
+namespace srpg{ struct controls; };
 class Projectile;
 class ProjectileManager;
 class QuadTree;
@@ -19,9 +19,6 @@ private:
     /// for function interactions with QuadTree used in collision detection and rendering.
     QuadTree* hostTreeNode = nullptr;
     std::list<std::shared_ptr<Entity>>::iterator myself;
-
-    virtual bool whatIsLife() = 0;
-
 
 protected:
 
@@ -43,6 +40,7 @@ protected:
     olc::Pixel fColour = olc::DARK_MAGENTA;
     olc::Pixel lineColour = olc::Pixel(255,0,127);
 
+    virtual bool whatIsLife() = 0;
 
     public:
     /// Enum for type checking at runtime when Needed
@@ -62,10 +60,11 @@ protected:
     virtual TYPE whoAreYou() = 0;
 
     bool isValid();
+
     bool operator == (const Entity& other) const;
     bool operator != (const Entity& other) const;
 
-    virtual void setTreeLocation(QuadTree* hostTreeNode, std::list<std::shared_ptr<Entity>>::iterator ent) final;
+    virtual void setTreeLocation(QuadTree* hostTreeNode)final;//, std::list<std::shared_ptr<Entity>>::iterator ent) final;
 
     virtual olc::vf2d location(olc::vf2d destiny) final;
     virtual olc::vf2d location() final {return _location;}
@@ -91,10 +90,9 @@ protected:
 
 class Npc : public Entity
     {
-    private:
+    protected:
         float maxHP = 100.0f;
         float HP = 100.0f;
-
         bool whatIsLife();
 
     public:
@@ -115,25 +113,23 @@ class Npc : public Entity
 class Hero : public Npc
 {
 private:
-    float MaxHP = 100.0f;
-    float HP = 100.0f;
 
     std::unique_ptr<ProjectileManager> bulletMan;
-    float fireRate = 2; // Projectiles per second
+    float fireRate = 3; // Projectiles per second
     float fireCount = 5;
     float bulletSpeed = 0.5f;
     float bulletLife = 3.0f;
     float projectileCooldown = 0;
     olc::vf2d pSize = {0.025f,0.05f};
 
-
-
+private:
+    //bool whatIsLife();
 public:
     Hero( olc::vf2d spawn, float newSize,olc::PixelGameEngine* game, float world);
     ~Hero();
     TYPE whoAreYou();
     void update(float fElapsedTime);
-    void update(float fElapsedTime, olc::vf2d worldMove, srpg_data::controls& inputs);
+    void update(float fElapsedTime, olc::vf2d worldMove, srpg::controls& inputs);
 
     bool fireProjectile(const olc::vf2d& target);
     bool projectileReady();
@@ -154,8 +150,8 @@ class Projectile : public Entity
         int hits;
         std::shared_ptr<olc::Sprite> sprite;
 
+    protected:
         bool whatIsLife();
-
     public:
 
         Projectile( olc::vf2d spawn, olc::vf2d projSize, float duration,olc::vf2d orientation,int hitCount, olc::PixelGameEngine* game);
@@ -176,7 +172,7 @@ class Projectile : public Entity
 
 class Decoration : public Entity
 {
-    private:
+    protected:
         bool whatIsLife();
 
     public:
