@@ -18,13 +18,12 @@ private:
 
     /// for function interactions with QuadTree used in collision detection and rendering.
     QuadTree* hostTreeNode = nullptr;
-    std::list<std::shared_ptr<Entity>>::iterator myself;
 
 protected:
 
     /// uuid and entID are for giving every entity created a unique identifier to eleminate duplicate or repeated checks.
     /// Useful in avoiding colide with self checks and for tracking recent interactions for hit cooldowns
-    /// ie. to prevent projectile hiting on every frame
+    /// ie. to prevent projectile re-hitting the same entity.
     static std::atomic_uint32_t uuid;
     const uint32_t entID;
 
@@ -42,7 +41,7 @@ protected:
 
     virtual bool whatIsLife() = 0;
 
-    public:
+public:
     /// Enum for type checking at runtime when Needed
     enum TYPE {
         HERO,
@@ -64,7 +63,7 @@ protected:
     bool operator == (const Entity& other) const;
     bool operator != (const Entity& other) const;
 
-    virtual void setTreeLocation(QuadTree* hostTreeNode)final;//, std::list<std::shared_ptr<Entity>>::iterator ent) final;
+    virtual void setTreeLocation(QuadTree* hostTreeNode)final;
 
     virtual olc::vf2d location(olc::vf2d destiny) final;
     virtual olc::vf2d location() final {return _location;}
@@ -77,8 +76,6 @@ protected:
 
     void setRender(std::shared_ptr<olc::Sprite> sprite);
     void setSharedDecal(std::shared_ptr<olc::Decal> tDecal);
-
-    static void makeRender(std::shared_ptr<olc::Sprite> sprite, olc::vi2d area, olc::PixelGameEngine* game);
 
     Rectangle getBoxCollider();
 
@@ -104,8 +101,6 @@ class Npc : public Entity
         void bump(olc::vf2d otherLoc,float otherSize);
         float getHP();
         void render();
-        static void makeRender(olc::Sprite* sprite, olc::vf2d area, olc::PixelGameEngine* game);
-        // make Render should be moved out to its own module that will contain many routines for many different things
 
     bool operator < (const Npc& s) const;
     };
@@ -122,8 +117,6 @@ private:
     float projectileCooldown = 0;
     olc::vf2d pSize = {0.025f,0.05f};
 
-private:
-    //bool whatIsLife();
 public:
     Hero( olc::vf2d spawn, float newSize,olc::PixelGameEngine* game, float world);
     ~Hero();

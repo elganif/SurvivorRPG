@@ -81,7 +81,6 @@ void FoeManager::spawn(float foeSize)
     items.push_back(std::move(theEvil));
 }
 
-
 void FoeManager::makeRender()
 {
     /// prepare the sprite object for drawing
@@ -159,7 +158,7 @@ int FoeManager::getKills()
 
 
 /// class ProjectileManager
-ProjectileManager::ProjectileManager(olc::PixelGameEngine* game, float worldRadius) : Manager(game,worldRadius){};
+ProjectileManager::ProjectileManager(olc::PixelGameEngine* game, float world) : Manager(game,world){};
 
 ProjectileManager::~ProjectileManager(){}
 
@@ -207,7 +206,7 @@ void ProjectileManager::makeRender(olc::vf2d pSize){
 
 /// class DecalManager
 /// Designed around background objects and static elements.
-DecalManager::DecalManager( olc::PixelGameEngine* game, float worldRadius) : Manager(game,worldRadius){}
+DecalManager::DecalManager( olc::PixelGameEngine* game, float world) : Manager(game,world){}
 
 DecalManager::~DecalManager(){}
 
@@ -272,7 +271,6 @@ void DecalManager::update(float fElapsedTime, olc::vf2d worldMove){
 
 void DecalManager::makeRender(){
 
-
     olc::vi2d area = srpg::viewer->ScaleToScreen({grassSize * 2,grassSize * 2});
     image = std::make_shared<olc::Sprite>(area.x+1,area.y+1);
 
@@ -286,4 +284,5 @@ void DecalManager::makeRender(){
     pge->SetDrawTarget(nullptr);
 
     drawing = std::make_shared<olc::Decal>(image.get());
+    pge->SetDrawTarget(nullptr);
 }

@@ -37,8 +37,8 @@ void GameWorld::start()
     heroicImage = std::make_shared<olc::Sprite>(Size.x+1,Size.y+1);
     mainChar->makeRender(heroicImage,Size,pge);
     mainChar->setRender(heroicImage);
-
     srpg::gameObjects->insertItem((std::shared_ptr<Entity>)mainChar);
+
     villians = std::make_unique<FoeManager>(pge,worldRadius);
     villians->initalize(250);
     lawn =  std::make_unique<DecalManager>(pge,worldRadius);
@@ -111,7 +111,6 @@ void GameWorld::draw()
 {
     srpg::timers->start("Render");
     pge->SetDrawTarget(srpg::renderLayerEntities);
-    //srpg->Clear(olc::BLANK);
 
     std::list<std::shared_ptr<Entity>> renderables;
     /// Use quadTree to find all entities that have overlap with the screen space. Only these need to be drawn.
@@ -120,8 +119,8 @@ void GameWorld::draw()
 
     /// Sort the list of items needing to be rendered ordered from top of screen to bottom of screen.
     renderables.sort([](const std::shared_ptr<Entity> f, const std::shared_ptr<Entity> s){return (f->location().y+f->getSize()) < (s->location().y+s->getSize()); });
-    for(auto it = renderables.begin();it!= renderables.end();it++){
-        (*it)->render();
+    for(auto& it : renderables){
+        it->render();
     }
     pge->SetDrawTarget(nullptr);
     srpg::timers->stop("Render");
@@ -182,8 +181,6 @@ std::string timeIntoString(std::chrono::duration<double> time){
 void GameWorld::gameHudDraw(srpg::controls& inputs){
     ///prepare areas for Side bar UI interface
     pge->SetDrawTarget(srpg::renderLayerUI);
-
-    int uiWidth = (pge->ScreenWidth() - pge->ScreenHeight())/2;
     HUD->display(inputs);
 
     ///crosshair for targeting - TODO: figure out where this code actually fits. Design proper crosshairs or cursor.
@@ -199,12 +196,12 @@ void GameWorld::gameHudGenerate(){
     HUD = std::make_unique<Screen>(pge,srpg::renderLayerUI);
 
     std::unique_ptr<UIContainer> leftHUD = std::make_unique<UIContainer>(pge,olc::vi2d(uiWidth,uiHeight));
-    leftHUD->setTheme(olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::DARK_GREEN );
+    leftHUD->editContainerElement()->background(olc::DARK_BLUE);
     HUD->addContainer(leftHUD,olc::vi2d(0,0),olc::vi2d(uiWidth,uiHeight));
 
     std::unique_ptr<UIContainer> rightHUD = std::make_unique<UIContainer>(pge,olc::vi2d(uiWidth,uiHeight),olc::vi2d(1,10));
-    rightHUD->setTheme(olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::DARK_GREEN );
-    rightHUD->addDynamicText([&](){return timeIntoString(engineClock); },14,UI::RIGHT ,olc::vi2d(0,0));
+    rightHUD->addElement(olc::vi2d(0,0))->addDynamicText([&](){return timeIntoString(engineClock); },olc::CYAN,14,RIGHT).background(olc::DARK_BLUE);
+    rightHUD->editContainerElement()->background(olc::DARK_BLUE);
     HUD->addContainer(rightHUD,olc::vi2d(pge->ScreenWidth() - uiWidth,0),olc::vi2d(uiWidth,uiHeight));
 
 }

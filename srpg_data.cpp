@@ -27,6 +27,23 @@ QuadTree::~QuadTree(){
     }
 };
 
+int findSubQuad(Rectangle rec,olc::vf2d center)
+{
+    olc::vi2d quadrent = rec.ufo(center);
+    int targetQuad = quadrent.x * 3 + quadrent.y;
+    switch (targetQuad){
+        case 4:
+            return 0;
+        case 2:
+            return 1;
+        case -2:
+            return 2;
+        case -4:
+            return 3;
+        default:
+            return -1;
+    }
+}
 /// Standard item insertion. calls method on inserted item to give it node and list info for validation later.
 /// (I would like to find a simple way to accomplish the same effect that would allow a template design instead of specialized.)
 void QuadTree::insertItem(const std::shared_ptr<Entity>& newEnt){
@@ -111,13 +128,13 @@ void QuadTree::getFoes(olc::vf2d targetLoc, float range, int numTarg,std::list<s
         if(( ent->location() - targetLoc).mag2() > range ){
             continue; /// ent is out of range
         }
-        if(returns.size() >= numTarg && targType( ent,returns.back()) ){
+        if(returns.size() > numTarg && targType( ent,returns.back()) ){
             continue; /// target is not better than current options
         } /// else
         /// add ent, sort into correct location and remove last one if list was full
         returns.push_front(ent);
         returns.sort(targType);
-        if(returns.size() >= numTarg){
+        if(returns.size() > numTarg){
             returns.pop_back();
         }
     }

@@ -50,7 +50,7 @@ void Entity::update(float fElapsedTime, olc::vf2d worldMove){
 
 /// Used to create entity decal out of sprite passed in
 void Entity::setRender(std::shared_ptr<olc::Sprite> sprite){
-    image = std::shared_ptr<olc::Decal>(new olc::Decal(sprite.get()));
+    image = std::make_shared<olc::Decal>(sprite.get());
 }
 
 /// Used to directly specify a Decal that may be shared by different entities
@@ -81,17 +81,9 @@ bool Entity::operator != (const Entity& other) const
 }
 
 /// used by QuadTree to give the entity information about where it sits. Used for calling validation on the tree.
-void Entity::setTreeLocation(QuadTree* treeNode)//, std::list<std::shared_ptr<Entity>>::iterator ent)
+void Entity::setTreeLocation(QuadTree* treeNode)
 {
     hostTreeNode = treeNode;
-    //myself = ent;
-}
-
-// Make Render may be moved to its own class later to import instructions from config files.
-void Entity::makeRender(std::shared_ptr<olc::Sprite> sprite, olc::vi2d area, olc::PixelGameEngine* game){
-game->SetDrawTarget(sprite.get());
-    game->Clear(olc::MAGENTA);
-    game->SetDrawTarget(nullptr);
 }
 
 /// gets a rectangular collsion box for quick checking if entities are close enough to interact
@@ -108,8 +100,6 @@ olc::vf2d Entity::rotatePt(olc::vf2d point,olc::vf2d angle){
     updatedpoint += _location;
     return updatedpoint;
 }
-
-
 
 /// class Npc : public Entity
 
@@ -151,27 +141,26 @@ bool Npc::whatIsLife(){
 }
 
 void Npc::onOverlap(std::shared_ptr<Entity> other){
-    if(*this == *other)
+
+    if(getUID() == other->getUID())
         return;
-    if(other->whoAreYou() == HERO){
-        //Collide with Hero
-        std::dynamic_pointer_cast<Hero>(other)->bump(location(),entSize);
-        return;
-    }
-    if(other->whoAreYou() == NPC){
-        //Collide with Friendly
+
+    Entity::TYPE whom = other->whoAreYou();
+    switch(whom) {
+    case HERO : /// A hero is the same as an NPC for collision.
+    case NPC :
+        /// Bump each other away
         std::dynamic_pointer_cast<Npc>(other)->bump(location(),entSize);
         return;
-    }
-    if(other->whoAreYou() == PROJECTILE){
-        // subtract projectiles damage from hp
+    case PROJECTILE :
+        /// subtract projectiles damage from hp
         HP = HP - std::dynamic_pointer_cast<Projectile>(other)->impact(this);
         return;
     }
 }
 
 void Npc::bump(olc::vf2d otherLoc,float otherSize){
-    olc::vf2d entRelLoc = (location() - otherLoc); // coordinate Dist
+    olc::vf2d entRelLoc = (location() - otherLoc); /// coordinate Dist
     float collideDist = (otherSize + entSize);
 
     if(collideDist * collideDist > entRelLoc.mag2()){

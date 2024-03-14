@@ -35,7 +35,7 @@ class FoeManager : public Manager<Npc>{
 
     int deadFoes = 0;
     public:
-    FoeManager(olc::PixelGameEngine* pge, float world);
+    FoeManager(olc::PixelGameEngine* game, float world);
     ~FoeManager();
 
     int getKills();

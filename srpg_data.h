@@ -12,6 +12,7 @@ class QuadTree
     private:
     int depth;
     Rectangle quadArea;
+    olc::vf2d centerPoint = quadArea.tl + quadArea.sides * 0.5;
     olc::vf2d quadrentSize = quadArea.sides * 0.5;
     std::vector<Rectangle> childArea =
             {Rectangle(quadArea.tl,quadrentSize),
