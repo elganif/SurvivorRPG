@@ -1,8 +1,9 @@
 #ifndef ENGINE_H_INCLUDED
 #define ENGINE_H_INCLUDED
 
-class Screen;
-class UIContainer;
+class Display;
+//class Element;
+//class Element::UIContainer;
 
 class GameWorld{
 private:
@@ -25,7 +26,8 @@ private:
     std::unique_ptr<ProjectileManager> bulletList;
     std::list<std::shared_ptr<Projectile>> bullets;
 
-    std::unique_ptr<Screen> HUD;
+    std::unique_ptr<Display> leftHUD;
+    std::unique_ptr<Display> rightHUD;
 
 
 public:

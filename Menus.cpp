@@ -5,94 +5,44 @@
 #include "Menus.h"
 #include <functional>
 
-
-UI::UI(olc::PixelGameEngine* game,olc::vi2d sides):pge(game),pixelArea(sides)
-{}
-
-/// class Container
-UIContainer::UIContainer(olc::PixelGameEngine* game, olc::vi2d drawArea,olc::vi2d mapArea): UI(game,drawArea),mapSize(mapArea)
-{}
-
-bool UIContainer::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
+/// Class UI. Only has one static method.
+std::unique_ptr<Display> UI::makeDisplay(olc::PixelGameEngine* game, olc::vi2d loc, olc::vi2d area)
 {
-    if(element && !element->isCurrent())
-        element->updateSprite();
-
-    draw(tl,drawArea);
-
-    bool changed = false;
-    olc::vi2d comptl = tl + borderZone;
-    olc::vi2d compArea  = drawArea - (2 * borderZone);
-    olc::vf2d gridBlock = compArea/mapSize;
-    for(auto& [key,comp] : componentMap){
-        if(comp.item->update(inputs,comptl + (key * gridBlock), comp.area * gridBlock) )
-        {changed = true;}
-    }
-    return changed;
+    return std::move(std::make_unique<Display>(game,loc,area) );
 }
 
-void UIContainer::draw(olc::vf2d tl, olc::vf2d drawArea)
-{
-    olc::vf2d scale = drawArea / pixelArea;
-    if(element)
-        element->draw(tl,drawArea);
-}
-
-void UIContainer::addContainer(std::unique_ptr<UIContainer>& container,olc::vi2d loc,olc::vi2d gridArea)
-{
-    std::unique_ptr<UI> contain = std::move(container);
-
-    componentMap[loc] = {std::move(contain),gridArea};
-}
-
-/// used to access an element behind the containers objects. will create new if needed.
-Element* UIContainer::editContainerElement()
-{
-    if(!element)
-        element = std::make_unique<Element>(pge,pixelArea);
-    return element.get();
-}
-
-/// Adds new element to the container at the LOCation. Will replace any existing element with new blank
-Element* UIContainer::addElement(olc::vi2d loc,olc::vi2d gridArea)
-{
-    olc::vf2d elementArea = pixelArea / mapSize * gridArea;
-
-    std::unique_ptr<UI> contain = std::make_unique<Element>(pge,elementArea);
-    componentMap[loc] = {std::move(contain),gridArea};
-    return (Element*)componentMap[loc].item.get();
-}
-
-Element* UIContainer::editElement(olc::vi2d loc)
-{
-    if(componentMap.find(loc) == componentMap.end()) /// if element was not already added giveback null
-        return nullptr;
-    return (Element*)componentMap[loc].item.get();
-}
-
-/// class Screen
-/// represents an entire display screen. Objects are placed inside to be shown or hidden as a collection.
-Screen::Screen(olc::PixelGameEngine* game, uint8_t drawLayer)
-    : UIContainer(game,olc::vi2d(game->ScreenWidth(),game->ScreenHeight()),olc::vi2d(game->ScreenWidth(),game->ScreenHeight()) )
+/// class Display
+/// represents a primary display object. Objects are placed inside to be shown or hidden as a collection.
+Display::Display(olc::PixelGameEngine* game,olc::vi2d loc, olc::vi2d area)
+    : Element(game,area),tl(loc)
 {
     borderZone = {0,0};
 }
 
-void Screen::display(srpg::controls& inputs)
+void Display::display(srpg::controls& inputs)
 {
-    UIContainer::update(inputs,{0,0},pixelArea);
+    this->update(inputs,tl,pixelArea);
+    draw(tl,pixelArea);
 }
 
 /// class Element
-Element::Element(olc::PixelGameEngine* game, olc::vf2d sides):UI(game,sides)
+Element::Element(olc::PixelGameEngine* game, olc::vf2d sides) : pge(game),pixelArea(sides)
+{}
+
+/// addSprite adds sprite & decal only if needed. Sets spriteCurrent bool false in all cases
+void Element::addSprite()
 {
+    spriteCurrent = false;
+    if(sprite)  /// Guard against recreateing Sprite multiple times
+        return;
     sprite = std::make_unique<olc::Sprite>(pixelArea.x,pixelArea.y);
-    decal = std::make_unique<olc::Decal>(sprite.get());
+    //decal = std::make_unique<olc::Decal>(sprite.get() );
 }
 
 bool Element::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
 {
     bool changed = false;
+
     for(auto& [key,comp] : features){
         if(comp->update(inputs,tl,drawArea) )
             changed = true;
@@ -100,16 +50,32 @@ bool Element::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
 
     if(!spriteCurrent || changed){
         updateSprite();
-        spriteCurrent = true;
     }
-    draw(tl,drawArea);
     return changed;
+}
+
+void Element::updateSprite()
+{
+    /// draw each feature to the sprite & update decal
+    if(sprite){
+        olc::Sprite* oldDraw = pge->GetDrawTarget();
+        pge->SetDrawTarget(sprite.get());
+        pge->Clear(olc::BLANK);
+        for(auto& [key,comp]:features){
+            comp->draw(borderZone, pixelArea-(2*borderZone) );
+        }
+        pge->SetDrawTarget(oldDraw);
+        //decal->Update();
+        spriteCurrent = true;
+        return;
+    }
 }
 
 void Element::draw(olc::vf2d tl, olc::vf2d drawSize)
 {
-    olc::vf2d scale = drawSize / pixelArea;
-    pge->DrawDecal(tl,decal.get(),scale);
+    if(sprite){
+        pge->DrawSprite(tl,sprite.get() );//,drawSize / pixelArea);
+    }
 }
 
 bool Element::isCurrent()
@@ -117,49 +83,109 @@ bool Element::isCurrent()
     return spriteCurrent;
 }
 
-void Element::updateSprite()
-{
-    /// draw each feature to the sprite & decal
-    olc::Sprite* oldDraw = pge->GetDrawTarget();
-    pge->SetDrawTarget(sprite.get());
+/// class Container
 
-    for(auto& [key,comp]:features){
-        comp->draw(borderZone, pixelArea);
+Element* Element::makeGrid(int x, int y)
+{
+    addSprite();
+    std::unique_ptr<Feature> temp = std::make_unique<Container>(pge,olc::vi2d(x,y));
+    features[CONTAINER] = std::move(temp);
+    return this;
+}
+
+Element* Element::setBlock(int x, int y, olc::vi2d blocks)
+{
+    if(features.count(CONTAINER) == 0)
+        return nullptr;
+    std::shared_ptr<Container> containPtr = std::static_pointer_cast<Container>(features[CONTAINER]);
+
+    olc::vf2d area = (pixelArea / containPtr->mapSize) * blocks;
+    std::shared_ptr<Element> elem = std::make_shared<Element>(pge,area);
+    containPtr->insertBlock(elem,olc::vi2d(x,y),blocks);
+    return elem.get();
+}
+
+Element* Element::getBlock(int x, int y)
+{
+    std::map<funct,std::shared_ptr<Feature>>::iterator contain = features.find(CONTAINER);
+    if(contain == features.end());
+        return nullptr;
+    std::shared_ptr<Container> containPtr = std::static_pointer_cast<Container>(contain->second);
+    std::shared_ptr<Element> element = containPtr->getBlock(x,y);
+    return element.get();
+}
+
+Element::Container::Container(olc::PixelGameEngine* game, olc::vi2d mapArea) : Feature(game),mapSize(mapArea)
+{}
+
+bool Element::Container::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
+{
+    bool changed = false;
+    olc::vi2d comptl = tl;
+    olc::vi2d compArea  = drawArea;
+    olc::vf2d gridBlock = compArea/mapSize;
+    for(auto& [key,comp] : elements){
+        if(comp.item->update(inputs,comptl + (key * gridBlock), comp.area * gridBlock) ){ /// run update as condition. if it returns true set changed true for return.
+            changed = true;
+        }
     }
-    pge->SetDrawTarget(oldDraw);
-    decal->Update();
+    return changed;
+}
+
+void Element::Container::draw(olc::vi2d borderArea, olc::vf2d drawSize)
+{
+    olc::Sprite* test = pge->GetDrawTarget();
+    olc::vi2d comptl = borderArea;
+    olc::vi2d compArea  = drawSize;
+    olc::vf2d gridBlock = compArea/mapSize;
+    for(auto& [key,comp] : elements){
+        comp.item->draw(comptl + (key * gridBlock), comp.area * gridBlock);
+    }
+}
+
+std::shared_ptr<Element> Element::Container::insertBlock(std::shared_ptr<Element> newBlock,olc::vi2d loc, olc::vi2d blocks)
+{
+    elements[loc] = {newBlock,blocks};
+    return elements[loc].item;
+}
+
+std::shared_ptr<Element> Element::Container::getBlock(int x, int y)
+{
+    olc::vi2d xy = {x,y};
+    if(elements.find(xy) == elements.end())
+        return nullptr;
+    return elements[xy].item;
 }
 
 /// class Background
 Element& Element::background(olc::Pixel bgColour)
 {
-    spriteCurrent = false;
+    addSprite();
     std::unique_ptr<Feature> temp = std::make_unique<Background>(pge,bgColour);
-    features[Feature::BG] = std::move(temp);
+    features[BG] = std::move(temp);
     return *this;
 }
 
-Element::Background::Background(olc::PixelGameEngine* game,olc::Pixel bgColour):Feature(game)
-{
-    colour = bgColour;
-}
+Element::Background::Background(olc::PixelGameEngine* game,olc::Pixel bgColour):Feature(game),colour(bgColour)
+{}
 
 void Element::Background::draw(olc::vi2d borderArea, olc::vf2d drawSize)
 {
+    olc::Sprite* test = pge->GetDrawTarget();
     pge->Clear(colour);
     pge->FillRect(borderArea.x,borderArea.y,drawSize.x - borderArea.x - borderArea.x - 1,drawSize.y - borderArea.y- borderArea.y - 1,colour);
 }
 
 /// class TextPlate
-Element& Element::text(std::string name,olc::Pixel textColour,Align alignment)
+Element& Element::text(std::string name,olc::Pixel textColour,UI::Align alignment)
 {
-    spriteCurrent = false;
+    addSprite();
     std::unique_ptr<Feature> temp = std::make_unique<TextPlate>(pge,name,textColour,alignment);
-    features[Feature::TEXT] = std::move(temp);
+    features[TEXT] = std::move(temp);
     return *this;
 }
 
-Element::TextPlate::TextPlate(olc::PixelGameEngine* game, std::string title, olc::Pixel textColour,Align alignment)
+Element::TextPlate::TextPlate(olc::PixelGameEngine* game, std::string title, olc::Pixel textColour,UI::Align alignment)
                 :Feature(game),name(title),colour(textColour),align(alignment)
 {}
 
@@ -174,13 +200,13 @@ void Element::TextPlate::draw(olc::vi2d borderArea, olc::vf2d drawSize)
     olc::vi2d textCorner;
     /// Establish starting point based on alignment
     switch (align) {
-        case LEFT :
+        case UI::LEFT :
             textCorner.x = borderArea.x;
         break;
-        case CENTER :
+        case UI::CENTER :
             textCorner.x = (drawSize.x - textArea.x)/2;
         break;
-        case RIGHT :
+        case UI::RIGHT :
             textCorner.x = drawSize.x - textArea.x - borderArea.x;
         break;
     }
@@ -190,21 +216,21 @@ void Element::TextPlate::draw(olc::vi2d borderArea, olc::vf2d drawSize)
 }
 
 /// class DynamicText
-Element& Element::addDynamicText(std::function<std::string()> task,olc::Pixel textColour,int maxLength,Align alignment)
+Element& Element::addDynamicText(std::function<std::string()> task,olc::Pixel textColour,int maxLength,UI::Align alignment)
 {
-    spriteCurrent = false;
+    addSprite();
     std::unique_ptr<Feature> temp = std::make_unique<DynamicText>(pge,task,textColour,maxLength,alignment);
-    features[Feature::TEXT] = std::move(temp);
+    features[TEXT] = std::move(temp);
     return *this;
 }
 
-Element::DynamicText::DynamicText(olc::PixelGameEngine* game, std::function<std::string()> task,olc::Pixel textColour,int expectedLength, Align alignment)
+Element::DynamicText::DynamicText(olc::PixelGameEngine* game, std::function<std::string()> task,olc::Pixel textColour,int expectedLength, UI::Align alignment)
                 :Feature(game), stringDisplay(task),colour(textColour),length(expectedLength), align(alignment)
 {}
 
 bool Element::DynamicText::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d drawArea)
 {
-    return true; ///Text needs to be refreshed each update.
+    return true; ///Text should be refreshed each update.
 }
 
 void Element::DynamicText::draw(olc::vi2d borderArea, olc::vf2d drawSize)
@@ -219,13 +245,13 @@ void Element::DynamicText::draw(olc::vi2d borderArea, olc::vf2d drawSize)
     olc::vi2d textCorner;
     /// Establish starting point based on alignment
     switch (align) {
-        case LEFT :
+        case UI::LEFT :
             textCorner.x = borderArea.x;
         break;
-        case CENTER :
+        case UI::CENTER :
             textCorner.x = (drawSize.x - textPixels.x) / 2;
         break;
-        case RIGHT :
+        case UI::RIGHT :
             textCorner.x = drawSize.x - borderArea.x - textPixels.x;
         break;
     }
@@ -237,9 +263,8 @@ void Element::DynamicText::draw(olc::vi2d borderArea, olc::vf2d drawSize)
 /// class Button
 Element& Element::addButton(std::function<void()> task)
 {
-    spriteCurrent = false;
     std::unique_ptr<Feature> temp = std::make_unique<Button>(pge,task);
-    features[Feature::CLICK] = std::move(temp);
+    features[CLICK] = std::move(temp);
     return *this;
 }
 
@@ -253,7 +278,5 @@ bool Element::Button::update(srpg::controls& inputs,olc::vf2d tl, olc::vf2d draw
     if(Rectangle(tl,drawArea).contains(inputs.UItarget) && inputs.mainAttack){
         execute();
     }
-    /// May include highlighting or mouse over response later or elsewhere
-    /// for now only input capture
     return false;
 }

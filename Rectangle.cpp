@@ -7,6 +7,7 @@ Rectangle::Rectangle(const olc::vf2d& loc, const olc::vf2d& area) : tl(loc),side
 
 Rectangle::~Rectangle(){}
 
+/// Returns equivlency of a point to the rectangle in 2 axis.
 const olc::vi2d Rectangle::ufo(const olc::vf2d& other)
 {
     olc::vi2d answer = {0,0};
@@ -26,12 +27,13 @@ const olc::vi2d Rectangle::ufo(const olc::vf2d& other)
     return answer;
 }
 
+/// Returns 2 axis equivelency of rectangles. Any overlap is considered equivelency.
 const olc::vi2d Rectangle::ufo(const Rectangle& other)
 {
     olc::vi2d answer = {0,0};
     /// check if any part is right of left wall, increment. Then check if left of right wall decriment.
     /// if point is in between both paths will happen and offset eachother for 0;
-    /// after do same for y axis.
+    /// repeat for y axis.
     if(tl.x <= other.tl.x + other.sides.x)
         answer.x += 1;
     if(tl.x + sides.x >= other.tl.x)
@@ -47,27 +49,16 @@ const olc::vi2d Rectangle::ufo(const Rectangle& other)
 
 bool Rectangle::contains(const olc::vf2d& point)
 {
-    if(tl.x < point.x && tl.x + sides.x > point.x &&
-       tl.y < point.y && tl.y + sides.y > point.y ){
-       return true;
-    }
-    return false;
+    return ( ufo(point) == olc::vi2d(0,0) );
 }
 
 bool Rectangle::contains(const Rectangle& other)
 {
-    if(tl.x < other.tl.x && tl.x + sides.x > other.tl.x + other.sides.x &&
-       tl.y < other.tl.y && tl.y + sides.y > other.tl.y + other.sides.y){
-       return true;
-    }
-    return false;
+    /// if both corners of other are within this rectangle then this contains other.
+    return ( ufo(other.tl) == olc::vf2d(0,0) && ufo(other.tl + other.sides) == olc::vf2d(0,0) );
 }
 
 bool Rectangle::overlaps(const Rectangle& other)
 {
-    if(tl.x < other.tl.x + other.sides.x && tl.x + sides.x >= other.tl.x &&
-       tl.y < other.tl.y + other.sides.y && tl.y + sides.y >= other.tl.y){
-        return true;
-    }
-    return false;
+    return ( ufo(other) == olc::vi2d(0,0) );
 }

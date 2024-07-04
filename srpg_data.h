@@ -91,7 +91,7 @@ public:
 };
 
 namespace srpg{
-    const bool debugTools = true;
+    const bool debugTools = false;
     extern std::unique_ptr<Profiler> timers;
 
     extern std::unique_ptr<QuadTree> gameObjects;

@@ -17,7 +17,8 @@ GameWorld::GameWorld(float worldSize,olc::PixelGameEngine* game) : worldRadius(w
 GameWorld::~GameWorld()
 {
     heroicImage.reset();
-    HUD.reset();
+    leftHUD.reset();
+    rightHUD.reset();
 }
 
 bool GameWorld::gameOver()
@@ -59,7 +60,7 @@ bool GameWorld::run(float fElapsedTime, srpg::controls& inputs)
     while(engineClock < std::chrono::_V2::steady_clock::now() - epochTime
         && frame{10} > std::chrono::_V2::steady_clock::now() - fStart ){
 
-        srpg::timers->start("gameTick");
+        if(srpg::debugTools) srpg::timers->start("gameTick");
 
         engineClock++;
         float tickSize = std::chrono::duration<float>(frame{1}).count();
@@ -88,7 +89,7 @@ bool GameWorld::run(float fElapsedTime, srpg::controls& inputs)
 
             lawn->update(tickSize,worldMove);
         }
-        srpg::timers->stop("gameTick");
+        if(srpg::debugTools) srpg::timers->stop("gameTick");
     }
     /// clean up empty nodes in quad tree
     srpg::gameObjects->clean();
@@ -109,7 +110,7 @@ void GameWorld::pause()
 
 void GameWorld::draw()
 {
-    srpg::timers->start("Render");
+    if(srpg::debugTools) srpg::timers->start("Render");
     pge->SetDrawTarget(srpg::renderLayerEntities);
 
     std::list<std::shared_ptr<Entity>> renderables;
@@ -123,7 +124,7 @@ void GameWorld::draw()
         it->render();
     }
     pge->SetDrawTarget(nullptr);
-    srpg::timers->stop("Render");
+    if(srpg::debugTools) srpg::timers->stop("Render");
 }
 
 
@@ -181,7 +182,8 @@ std::string timeIntoString(std::chrono::duration<double> time){
 void GameWorld::gameHudDraw(srpg::controls& inputs){
     ///prepare areas for Side bar UI interface
     pge->SetDrawTarget(srpg::renderLayerUI);
-    HUD->display(inputs);
+    leftHUD->display(inputs);
+    rightHUD->display(inputs);
 
     ///crosshair for targeting - TODO: figure out where this code actually fits. Design proper crosshairs or cursor.
     pge->SetDrawTarget(nullptr);
@@ -193,17 +195,15 @@ void GameWorld::gameHudGenerate(){
     int uiWidth = (pge->ScreenWidth() - pge->ScreenHeight())/2;
     int uiHeight = (pge->ScreenHeight());
 
-    HUD = std::make_unique<Screen>(pge,srpg::renderLayerUI);
 
-    std::unique_ptr<UIContainer> leftHUD = std::make_unique<UIContainer>(pge,olc::vi2d(uiWidth,uiHeight));
-    leftHUD->editContainerElement()->background(olc::DARK_BLUE);
-    HUD->addContainer(leftHUD,olc::vi2d(0,0),olc::vi2d(uiWidth,uiHeight));
+    leftHUD = UI::makeDisplay(pge,olc::vi2d(0,0),olc::vi2d(uiWidth,uiHeight));
+    leftHUD->background(olc::DARK_BLUE);
 
-    std::unique_ptr<UIContainer> rightHUD = std::make_unique<UIContainer>(pge,olc::vi2d(uiWidth,uiHeight),olc::vi2d(1,10));
-    rightHUD->addElement(olc::vi2d(0,0))->addDynamicText([&](){return timeIntoString(engineClock); },olc::CYAN,14,RIGHT).background(olc::DARK_BLUE);
-    rightHUD->editContainerElement()->background(olc::DARK_BLUE);
-    HUD->addContainer(rightHUD,olc::vi2d(pge->ScreenWidth() - uiWidth,0),olc::vi2d(uiWidth,uiHeight));
 
+    rightHUD = UI::makeDisplay(pge,olc::vi2d(pge->ScreenWidth() - uiWidth,0),olc::vi2d(uiWidth,uiHeight));
+    rightHUD->makeGrid(1,10)->background(olc::DARK_BLUE);
+    rightHUD->setBlock(0,0)->addDynamicText([&](){return timeIntoString(engineClock); },olc::CYAN,14,UI::RIGHT).background(olc::BLUE);
+    rightHUD->setBlock(0,1)->addDynamicText([&](){return std::to_string(villians->getKills()); },olc::CYAN,14,UI::RIGHT).background(olc::BLUE);
 }
 
 

@@ -42,11 +42,12 @@ float worldRadius = 10.0;
 
 enum Menus{
     TITLE,
+    MAINMENU,
     OPTION,
     GAMEOVER
 };
 
-std::unordered_map<Menus, std::unique_ptr<Screen>> menuDisplay;
+std::unordered_map<Menus, std::unique_ptr<Display>> menuDisplay;
 std::unique_ptr<GameWorld> gamePlay = nullptr;
 
 struct STATE{
@@ -106,35 +107,47 @@ public:
 
         // Object inialization
 
-        menuDisplay.emplace(TITLE,constructMain() );
+        menuDisplay.emplace(TITLE,constructTitle() );
+        menuDisplay.emplace(MAINMENU,constructMainMenu() );
 
-        menuDisplay.emplace(GAMEOVER ,constructGameOver());
+        menuDisplay.emplace(GAMEOVER ,constructGameOver() );
 
         srpg::timers = std::make_unique<Profiler>();
 		return true;
 	}
 
-    std::unique_ptr<Screen> constructMain(){
-        UI::theme titletheme =  {olc::CYAN ,olc::BLANK ,olc::BLANK ,olc::BLANK};
-        UI::theme buttontheme = {olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE};
+    struct theme{
+        olc::Pixel text;
+        olc::Pixel bg;
+        olc::Pixel border;
+        olc::Pixel highlight;
+    };
+
+    std::unique_ptr<Display> constructTitle(){
+        theme titletheme =  {olc::CYAN ,olc::BLANK ,olc::BLANK ,olc::BLANK};
         olc::vf2d titleArea = {ScreenWidth() * 0.35f, ScreenHeight() *0.2f};
         olc::vf2d titleLoc = olc::vi2d(ScreenWidth() * 0.5f, ScreenHeight() *0.25f) - titleArea/2;
 
 
-        std::unique_ptr<UIContainer> title = std::make_unique<UIContainer>(this,titleArea,olc::vi2d(1,2));
+        std::unique_ptr<Display> title = UI::makeDisplay(this,titleLoc,titleArea);
+        title->makeGrid(1,2);
+        title->setBlock(0,0)->text("Roles of",titletheme.text);
+        title->setBlock(0,1)->text("Survival",titletheme.text);
 
-        title->addElement({0,0})->text("Roles of",titletheme.text);
-        title->addElement({0,1})->text("Survival",titletheme.text);
+        return title;
+    }
 
-        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg::renderLayerMenu);
-        screen->addContainer(title,titleLoc,titleArea);
 
+    std::unique_ptr<Display> constructMainMenu(){
+        theme buttontheme = {olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE};
         olc::vf2d menuArea = {ScreenWidth() * 0.2f, ScreenHeight() * 0.16f};
         olc::vf2d menuLoc = olc::vf2d(ScreenWidth() *0.5f , ScreenHeight() * 0.6f) - menuArea/2;
+        std::unique_ptr<Display> mainMenu = UI::makeDisplay(this,menuLoc,menuArea);
 
-        std::unique_ptr<UIContainer> main = std::make_unique<UIContainer>(this,menuArea,olc::vi2d(1,3));
 
-        main->addElement({0,0})->text("START",buttontheme.text).background(buttontheme.bg)
+        mainMenu->makeGrid(1,3);// = std::make_unique<UIContainer>(this,menuArea,olc::vi2d(1,3));
+
+        mainMenu->setBlock(0,0)->text("START",buttontheme.text).background(buttontheme.bg)
                                 .addButton([&]{if(state.game == STATE::GAME::NONE){
                                         gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                                         gamePlay->start();
@@ -147,45 +160,43 @@ public:
 
 
 
-        main->addElement({0,1})->text("RESTART",buttontheme.text).background(buttontheme.bg)
+        mainMenu->setBlock(0,1)->text("RESTART",buttontheme.text).background(buttontheme.bg)
                         .addButton( [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                                     gamePlay->start();
                                     state.game = STATE::GAME::PLAY;
                                     state.menu = STATE::MENU::CLOSED;
                                 });
 
-        main->addElement({0,2})->text("EXIT",buttontheme.text).background(buttontheme.bg)
+        mainMenu->setBlock(0,2)->text("EXIT",buttontheme.text)
+                             .background(buttontheme.bg)
                              .addButton([&]{gameOpen = false;} );
 
-        screen->addContainer(main,menuLoc,menuArea);
 
-        return screen;
+        return mainMenu;
 
     }
 
-    std::unique_ptr<Screen> constructGameOver(){
+    std::unique_ptr<Display> constructGameOver(){
         olc::vf2d menuArea = {ScreenHeight() * 0.5f , ScreenHeight() * 0.5f};
         olc::vf2d menuLoc = olc::vf2d(ScreenWidth() * 0.5f, ScreenHeight() * 0.5f) - (menuArea / 2);
+        theme gotheme = {olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE };
 
-        std::unique_ptr<Screen> screen = std::make_unique<Screen>(this,srpg::renderLayerUI);
+        std::unique_ptr<Display> gameOver = UI::makeDisplay(this,menuLoc,menuArea);
 
+        gameOver->makeGrid(1,7)->background(gotheme.bg);
 
-        std::unique_ptr<UIContainer> gameOver = std::make_unique<UIContainer>(this,menuArea,olc::vi2d(1,7));
-        UI::theme gotheme = {olc::CYAN ,olc::DARK_BLUE ,olc::DARK_BLUE ,olc::BLUE };
-        gameOver->editContainerElement()->background(gotheme.bg);
+        gameOver->setBlock(0,0,olc::vi2d(1,2))->text("GAME",gotheme.text).background(gotheme.bg);
 
-        gameOver->addElement({0,0},{1,2})->text("GAME",gotheme.text).background(gotheme.bg);
+        gameOver->setBlock(0,2,olc::vi2d(1,2))->text("OVER",gotheme.text).background(gotheme.bg);
 
-        gameOver->addElement({0,2},{1,2})->text("OVER",gotheme.text).background(gotheme.bg);
-
-        gameOver->addElement({0,4})->text("Main Menu",gotheme.text).background(gotheme.bg)
+        gameOver->setBlock(0,4)->text("Main Menu",gotheme.text).background(gotheme.bg)
                                         .addButton(
                                         [&]{gamePlay.reset();
                                         state.menu = STATE::MENU::MAIN;
                                         state.game = STATE::GAME::NONE;
                                         });
 
-        gameOver->addElement({0,5})->text("Restart",gotheme.text).background(gotheme.bg)
+        gameOver->setBlock(0,5)->text("Restart",gotheme.text).background(gotheme.bg)
                                     .addButton(
                                     [&]{gamePlay = std::make_unique<GameWorld>(worldRadius,this);
                                     gamePlay->start();
@@ -193,12 +204,11 @@ public:
                                     state.game = STATE::GAME::PLAY;
                                     });
 
-        gameOver->addElement({0,6})->text("Exit",gotheme.text).background(gotheme.bg)
+        gameOver->setBlock(0,6)->text("Exit",gotheme.text).background(gotheme.bg)
                                     .addButton([&]{gameOpen = false;});
 
 
-        screen->addContainer(gameOver,menuLoc,menuArea);
-        return screen;
+        return gameOver;
 
     }
 
@@ -255,7 +265,7 @@ public:
 	{
 		// called once per frame
         srpg::timers->frameMark();
-		srpg::timers->start("MainLoop");
+		if(srpg::debugTools) srpg::timers->start("MainLoop");
 
 		SetDrawTarget(nullptr);
         Clear(olc::BLANK);
@@ -289,15 +299,17 @@ public:
         if(state.menu == STATE::MENU::MAIN){
             SetDrawTarget(srpg::renderLayerMenu);
             menuDisplay[TITLE]->display(inputs);
+            menuDisplay[MAINMENU]->display(inputs);
             SetDrawTarget(nullptr);
         }
 
-        if(gamePlay){
+        if(gamePlay && srpg::debugTools){
         SetDrawTarget(srpg::renderLayerMenu);
         std::list<std::shared_ptr<Entity>> closeTest;
         srpg::gameObjects->getFoes(inputs.target,20, 5,closeTest,QuadTree::CLOSE);
         for(auto& ent : closeTest)
             srpg::viewer->DrawLine(ent->location(),inputs.target);
+        SetDrawTarget(nullptr);
         }
 
         switch (state.game){
@@ -312,6 +324,7 @@ public:
                 }
             break;
             case STATE::GAME::OVER :
+                SetDrawTarget(srpg::renderLayerMenu);
                 menuDisplay[GAMEOVER]->display(inputs);
             break;
         }
@@ -323,8 +336,8 @@ public:
 
         SetDrawTarget(nullptr);
 
-        srpg::timers->stop("MainLoop");
         if(srpg::debugTools){
+            srpg::timers->stop("MainLoop");
             srpg::timers->drawDebug(this);
             if(srpg::gameObjects && false){
                 Rectangle screen = Rectangle({srpg::viewer->GetWorldTL(),srpg::viewer->GetWorldVisibleArea()});
